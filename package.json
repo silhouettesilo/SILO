@@ -1,0 +1,12 @@
+{ 
+  "name": "silo",
+  "version": "1.0.0",
+  "description": "SILO Intelligent Business Management",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js"
+  },
+  "dependencies": {
+    "express": "^5.3.0"
+  }
+}

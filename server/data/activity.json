@@ -1,0 +1,178 @@
+[
+  {
+    "id": "b88ca5cd-b7b6-4768-bc1b-c8d0358871f7",
+    "action": "proposal_approved",
+    "description": "Approved and executed AI Employee plan: Create Company Statement",
+    "entityType": "proposal",
+    "entityId": "3201cc75-cd06-4207-9663-1a31f0548d20",
+    "createdAt": "2026-11-11T02:47:54.611Z"
+  },
+  {
+    "id": "6cd3faef-d261-48b9-909e-2afa6713efba",
+    "action": "employee_create_document",
+    "description": "AI Employee create document: Company Statement",
+    "entityType": "documents",
+    "entityId": "39479bc9-3a7b-48b9-a4ac-8f4370fa8e15",
+    "createdAt": "2026-11-11T02:47:54.608Z"
+  },
+  {
+    "id": "9d0983a0-575c-4021-ad58-0d21c805328d",
+    "action": "employee_create_customer",
+    "description": "AI Employee create customer: SILO",
+    "entityType": "customers",
+    "entityId": "b102d4e2-670a-4164-ac7c-9b331859699a",
+    "createdAt": "2026-11-11T02:47:54.607Z"
+  },
+  {
+    "id": "0c5a09b4-b0d6-470a-94de-1c1f147997d3",
+    "action": "employee_plan_created",
+    "description": "SILO prepared an AI Employee plan with 2 action(s): Create Company Statement",
+    "entityType": "proposal",
+    "entityId": "3201cc75-cd06-4207-9663-1a31f0548d20",
+    "createdAt": "2026-11-11T02:47:14.345Z"
+  },
+  {
+    "id": "828c7c4c-2262-4bd5-9032-8ec5eaae0f53",
+    "action": "proposal_rejected",
+    "description": "Rejected AI Employee proposal: Prepare Next Week Business Review",
+    "entityType": "proposal",
+    "entityId": "093c622f-3a83-451c-81e5-aec950ece201",
+    "createdAt": "2026-11-11T02:46:47.552Z"
+  },
+  {
+    "id": "cb9ee7f7-944f-4410-bd9b-249ea05c78d1",
+    "action": "proposal_rejected",
+    "description": "Rejected AI Employee proposal: Prepare Next Week Business Review",
+    "entityType": "proposal",
+    "entityId": "b1d8c81a-2677-4abe-85f4-d3511498a21a",
+    "createdAt": "2026-11-11T02:46:46.629Z"
+  },
+  {
+    "id": "7859a13f-38d2-4361-82ce-a43e21aad8f5",
+    "action": "employee_plan_created",
+    "description": "SILO prepared an AI Employee plan with 2 action(s): Prepare Next Week Business Review",
+    "entityType": "proposal",
+    "entityId": "093c622f-3a83-451c-81e5-aec950ece201",
+    "createdAt": "2026-11-11T02:45:53.584Z"
+  },
+  {
+    "id": "2b3ab753-c208-4e48-b14a-5d8d2e954f12",
+    "action": "employee_plan_created",
+    "description": "SILO prepared an AI Employee plan with 2 action(s): Prepare Next Week Business Review",
+    "entityType": "proposal",
+    "entityId": "b1d8c81a-2677-4abe-85f4-d3511498a21a",
+    "createdAt": "2026-11-11T02:45:40.064Z"
+  },
+  {
+    "id": "9eb63f3c-c000-4f16-9fab-963af32dd338",
+    "action": "assistant_used",
+    "description": "Used SILO AI Assistant (qwen3:1.7b).",
+    "entityType": "system",
+    "entityId": null,
+    "createdAt": "2026-11-11T02:42:17.685Z"
+  },
+  {
+    "id": "1a994bff-4e34-4bf9-b1f3-14ea4deaae96",
+    "action": "assistant_used",
+    "description": "Used SILO AI Assistant (qwen3:1.7b).",
+    "entityType": "system",
+    "entityId": null,
+    "createdAt": "2026-11-11T02:31:39.113Z"
+  },
+  {
+    "id": "786f4e43-ad0e-49f2-ab81-32e212222d0b",
+    "action": "task_deleted",
+    "description": "Deleted task: Automation-created task",
+    "entityType": "task",
+    "entityId": "17b26d70-51a0-4aaa-8109-5521946d7af1",
+    "createdAt": "2026-11-11T02:14:53.061Z"
+  },
+  {
+    "id": "f3e2b576-ae28-4c51-b2b3-614f8e9fcaee",
+    "action": "task_deleted",
+    "description": "Deleted task: Automation-created task",
+    "entityType": "task",
+    "entityId": "eac396ce-65e7-45a6-ad95-cf4a4bb82664",
+    "createdAt": "2026-11-11T02:14:51.094Z"
+  },
+  {
+    "id": "69ac950f-7d24-4e68-8529-e43b28623e64",
+    "action": "task_deleted",
+    "description": "Deleted task: Food",
+    "entityType": "task",
+    "entityId": "442a8259-24de-4127-a611-650931b03afa",
+    "createdAt": "2026-11-11T02:14:48.999Z"
+  },
+  {
+    "id": "9c10fc62-0f7f-445d-afa5-2888c1813024",
+    "action": "automation_deleted",
+    "description": "Deleted automation: Yes",
+    "entityType": "automations",
+    "entityId": "71bf646b-bff1-49e5-918b-a6b870163785",
+    "createdAt": "2026-11-11T02:14:34.054Z"
+  },
+  {
+    "id": "fe589114-9399-464b-b2a8-8d916a68b624",
+    "action": "automation_updated",
+    "description": "Updated automation: Yes",
+    "entityType": "automations",
+    "entityId": "71bf646b-bff1-49e5-918b-a6b870163785",
+    "createdAt": "2026-11-11T02:14:31.161Z"
+  },
+  {
+    "id": "fc10deaf-b5e3-497c-be1c-700b45699182",
+    "action": "automation_ran",
+    "description": "Automation \"Yes\" created task \"Automation-created task\".",
+    "entityType": "automation",
+    "entityId": "71bf646b-bff1-49e5-918b-a6b870163785",
+    "createdAt": "2026-11-11T02:14:28.351Z"
+  },
+  {
+    "id": "02b8cf5e-40b2-40cd-847e-8d0e2cfd8c9d",
+    "action": "automation_ran",
+    "description": "Automation \"Yes\" created task \"Automation-created task\".",
+    "entityType": "automation",
+    "entityId": "71bf646b-bff1-49e5-918b-a6b870163785",
+    "createdAt": "2026-11-11T02:14:22.752Z"
+  },
+  {
+    "id": "5ceaa93a-dc06-4194-9650-defdb5db7da5",
+    "action": "automation_created",
+    "description": "Created automation: Yes",
+    "entityType": "automations",
+    "entityId": "71bf646b-bff1-49e5-918b-a6b870163785",
+    "createdAt": "2026-11-11T02:14:20.752Z"
+  },
+  {
+    "id": "cd9d2f98-fdfd-4de9-939a-ea764e4bb346",
+    "action": "assistant_used",
+    "description": "Used the SILO local assistant.",
+    "entityType": "system",
+    "entityId": null,
+    "createdAt": "2026-11-11T02:13:04.541Z"
+  },
+  {
+    "id": "2a209dd3-b22a-42f3-9574-ed3377fdde39",
+    "action": "assistant_used",
+    "description": "Used the SILO local assistant.",
+    "entityType": "system",
+    "entityId": null,
+    "createdAt": "2026-11-11T02:13:02.166Z"
+  },
+  {
+    "id": "7ab7e24f-1c1c-461f-9278-8af0a1fcb040",
+    "action": "assistant_used",
+    "description": "Used the SILO local assistant.",
+    "entityType": "system",
+    "entityId": null,
+    "createdAt": "2026-11-11T02:12:50.912Z"
+  },
+  {
+    "id": "742ca567-fec2-4ad9-af4c-aa873f1780d0",
+    "action": "task_created",
+    "description": "Created task: Food",
+    "entityType": "task",
+    "entityId": "442a8259-24de-4127-a611-650931b03afa",
+    "createdAt": "2026-11-11T02:11:58.204Z"
+  }
+]

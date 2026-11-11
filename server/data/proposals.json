@@ -1,0 +1,111 @@
+[
+  {
+    "id": "3201cc75-cd06-4207-9663-1a31f0548d20",
+    "type": "employee_plan",
+    "title": "Create Company Statement",
+    "description": "Create a company statement",
+    "priority": "normal",
+    "actions": [
+      {
+        "type": "create_customer",
+        "data": {
+          "name": "SILO",
+          "email": "info@si-lo.com",
+          "phone": "123-456-7890",
+          "company": "SILO Technologies",
+          "status": "active",
+          "notes": "Company statement draft"
+        },
+        "reason": "To establish a customer record for the company statement"
+      },
+      {
+        "type": "create_document",
+        "data": {
+          "title": "Company Statement",
+          "category": "Corporate",
+          "content": "SILO Technologies is committed to providing innovative solutions and fostering growth. Our mission is to deliver value to our clients through excellence in technology and service. We strive to achieve our goals by continuously improving our offerings and maintaining a strong corporate culture."
+        },
+        "reason": "To create a formal company statement document"
+      }
+    ],
+    "status": "approved",
+    "createdAt": "2026-11-11T02:47:14.333Z",
+    "reviewedAt": "2026-11-11T02:47:54.609Z",
+    "executionResults": [
+      {
+        "type": "create_customer",
+        "collection": "customers",
+        "id": "b102d4e2-670a-4164-ac7c-9b331859699a",
+        "label": "SILO"
+      },
+      {
+        "type": "create_document",
+        "collection": "documents",
+        "id": "39479bc9-3a7b-48b9-a4ac-8f4370fa8e15",
+        "label": "Company Statement"
+      }
+    ]
+  },
+  {
+    "id": "093c622f-3a83-451c-81e5-aec950ece201",
+    "type": "employee_plan",
+    "title": "Prepare Next Week Business Review",
+    "description": "Create a high-priority task called Prepare Next Week Business Review. Also create a document called Weekly Review Checklist with steps for reviewing tasks, customers, and upcoming deadlines.",
+    "priority": "normal",
+    "actions": [
+      {
+        "type": "create_task",
+        "data": {
+          "title": "Prepare Next Week Business Review",
+          "description": "Prepare for the next week's business review by reviewing tasks, customers, and upcoming deadlines.",
+          "priority": "high",
+          "dueDate": "2026-11-18"
+        },
+        "reason": "Prepared by SILO AI Employee."
+      },
+      {
+        "type": "create_document",
+        "data": {
+          "title": "Weekly Review Checklist",
+          "category": "Checklist",
+          "content": "Review tasks: Check all tasks completed and pending. Check customers: Review interactions and feedback. Check upcoming deadlines: Ensure all deadlines are met."
+        },
+        "reason": "Prepared by SILO AI Employee."
+      }
+    ],
+    "status": "rejected",
+    "createdAt": "2026-11-11T02:45:53.560Z",
+    "reviewedAt": "2026-11-11T02:46:47.551Z"
+  },
+  {
+    "id": "b1d8c81a-2677-4abe-85f4-d3511498a21a",
+    "type": "employee_plan",
+    "title": "Prepare Next Week Business Review",
+    "description": "Create a high-priority task called Prepare Next Week Business Review. Also create a document called Weekly Review Checklist with steps for reviewing tasks, customers, and upcoming deadlines.",
+    "priority": "normal",
+    "actions": [
+      {
+        "type": "create_task",
+        "data": {
+          "title": "Prepare Next Week Business Review",
+          "description": "Create a plan for reviewing tasks, customers, and upcoming deadlines.",
+          "priority": "high",
+          "dueDate": "2026-11-15T00:00:00Z"
+        },
+        "reason": "Prepared by SILO AI Employee."
+      },
+      {
+        "type": "create_document",
+        "data": {
+          "title": "Weekly Review Checklist",
+          "category": "Checklist",
+          "content": "1. Review all tasks assigned.\n2. Check status of customers and their deadlines.\n3. Confirm upcoming deadlines and schedule reviews."
+        },
+        "reason": "Prepared by SILO AI Employee."
+      }
+    ],
+    "status": "rejected",
+    "createdAt": "2026-11-11T02:45:40.043Z",
+    "reviewedAt": "2026-11-11T02:46:46.627Z"
+  }
+]
