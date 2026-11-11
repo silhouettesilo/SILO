@@ -225,6 +225,7 @@ async function act(action,el){
 }
 appRoot.addEventListener('click',async e=>{
  const authSwitch=e.target.closest('[data-auth-switch]');if(authSwitch){renderAuth(authSwitch.dataset.authSwitch,state.setupRequired);return;}
+ const forgot=e.target.closest('[data-forgot-password]');if(forgot){renderAuth('forgot',state.setupRequired);return;}
  const resend=e.target.closest('[data-resend-verification]');if(resend){const email=appRoot.querySelector('#auth-form [name=email]')?.value.trim();if(!email){toast('Enter your email address first.',true);return;}try{await request('/auth/resend-verification',{method:'POST',body:JSON.stringify({email})});toast('If the account needs verification, a new link has been sent.');}catch(err){toast(err.message,true);}return;}
  const page=e.target.closest('[data-page]');if(page){state.page=page.dataset.page;state.search='';state.filter='all';renderPage();document.querySelectorAll('.nav-item[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page===state.page));return;}
  const tab=e.target.closest('[data-settings-tab]');if(tab){state.settingsTab=tab.dataset.settingsTab;renderPage();return;}

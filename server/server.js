@@ -1076,7 +1076,7 @@ app.post('/api/proposals/:id/undo',requireAuth,csrf,requireRole('owner','admin')
     tx(); res.json({ok:true,message:'The approved proposal was safely reversed.'});
   } catch(e) { sendError(res,409,e.message); }
 });
-app.post('/api/proposals/:id/reject',requireAuth,csrf,(req,res)=>{
+app.post('/api/proposals/:id/reject',requireAuth,csrf,requireRole('owner','admin'),(req,res)=>{
   const p=get(req,'proposals',req.params.id); if(!p||p.status!=='pending') return sendError(res,404,'Pending proposal not found.');
   p.status='rejected'; p.rejectedAt=iso(); save(req,'proposals',p); db.db.prepare('INSERT INTO ai_execution_history(id,workspace_id,user_id,proposal_id,action,detail_json,created_at) VALUES(?,?,?,?,?,?,?)').run(id(),req.workspace.workspaceId,req.session.userId,p.id,'rejected',JSON.stringify({summary:p.summary}),iso()); recordActivity(req,'employee.plan_rejected',{description:'Rejected AI Employee plan',proposalId:p.id}); res.json({ok:true});
 });
