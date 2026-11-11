@@ -11,3 +11,7 @@ server/data/*.sqlite-wal
 .env
 .env.*
 !.env.example
+
+# All local application data
+server/data/*
+!server/data/.gitkeep
