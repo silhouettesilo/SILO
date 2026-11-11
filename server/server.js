@@ -1335,4 +1335,4 @@ processCalendarReminders().catch(e=>console.error('[SILO REMINDER WORKER]',e.mes
 const reminderTimer=setInterval(()=>processCalendarReminders().catch(e=>console.error('[SILO REMINDER WORKER]',e.message)),60*1000);
 reminderTimer.unref();
 
-app.listen(PORT,HOST,()=>console.log(`SILO 3.0 recovery.1 running at http://${HOST}:${PORT}`));
+app.listen(PORT,HOST,()=>console.log(`SILO 3.0 recovery.12 running at http://${HOST}:${PORT}`));

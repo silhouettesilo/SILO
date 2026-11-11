@@ -2,6 +2,39 @@
 
 This document is an operator checklist, not a substitute for professional legal, security or tax advice.
 
+## Recommended first deployment: Render
+
+1. Create a Render Web Service connected to silhouettesilo/SILO.
+2. Select branch silo-2.0 and Docker as the runtime.
+3. Set the health check path to /api/health.
+4. Use a paid Starter instance for the initial low-traffic deployment.
+5. Attach a 1 GB persistent disk mounted at exactly /app/server/data.
+6. Keep one application instance while using SQLite.
+7. Configure production environment variables before deploying.
+8. Verify the public HTTPS /api/health endpoint after deployment.
+
+The free filesystem is ephemeral and is not suitable for SILO's SQLite database.
+A persistent disk requires a paid service. Disk-backed services have deployment
+limitations and cannot be horizontally scaled across multiple instances.
+
+Current indicative hosting cost: $7/month for Starter compute plus $0.25/month
+for a 1 GB disk. Check Render's current pricing before purchasing.
+
+Production configuration:
+- NODE_ENV=production
+- SILO_HOST=0.0.0.0
+- APP_URL=https://YOUR-SERVICE.onrender.com
+- PORT is supplied by Render
+- SESSION_SECRET and MFA_ENCRYPTION_KEY must be different random values, each
+  at least 32 characters.
+- SILO_SETUP_KEY must be a private random value for initial owner registration.
+- RESEND_API_KEY and EMAIL_FROM must identify a verified sender.
+- AI_PROVIDER=openai and OPENAI_API_KEY must be configured for hosted AI.
+- Stripe variables can be added after Stripe test-mode configuration.
+
+Store all credentials in Render's Environment settings, never in GitHub.
+Generate secrets locally with: openssl rand -hex 32
+
 ## Required before public customer accounts
 - Register and confirm the business identity when ready; use accurate legal entity, address and support contact details.
 - Obtain appropriate tax advice and separate business banking/bookkeeping before collecting business revenue.
