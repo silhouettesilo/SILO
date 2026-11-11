@@ -1,12 +1,31 @@
-{ 
+{
   "name": "silo",
-  "version": "1.0.0",
-  "description": "SILO Intelligent Business Management",
+  "version": "3.0.0-recovery.12",
+  "private": true,
+  "description": "SILO Intelligent Business Management — recovered 3.0 feature foundation",
   "main": "server/server.js",
   "scripts": {
-    "start": "node server/server.js"
+    "start": "node server/server.js",
+    "dev": "node --watch server/server.js",
+    "verify": "node scripts/verify.js",
+    "verify:schema": "python3 scripts/schema-check.py",
+    "verify:security": "node scripts/security-check.js",
+    "verify:stripe": "node scripts/stripe-guard-check.js",
+    "test": "npm run verify:security && npm run verify:stripe && npm run verify:schema && npm run verify:launch && npm run verify",
+    "verify:launch": "node scripts/launch-check.js"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "dependencies": {
-    "express": "^5.3.0"
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^13.0.3",
+    "dotenv": "^18.0.10",
+    "express": "^5.3.0",
+    "express-rate-limit": "^8.7.4",
+    "express-session": "^1.19.0",
+    "helmet": "^8.3.0",
+    "stripe": "^20.0.0",
+    "zod": "^4.6.7"
   }
 }

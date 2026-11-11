@@ -1,0 +1,13 @@
+
+# Local dependencies
+node_modules/
+
+# Local SQLite database and backups
+server/data/*.sqlite
+server/data/*.sqlite-shm
+server/data/*.sqlite-wal
+
+# Environment secrets
+.env
+.env.*
+!.env.example

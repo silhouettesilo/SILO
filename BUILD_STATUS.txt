@@ -1,0 +1,115 @@
+SILO 3.0 RECOVERY BUILD — 2026-11-11
+
+This build is reconstructed from the preserved SILO 2.0 Commercial Build and the
+three source replacements in the SILO 2.1 Email Verification Upgrade. It is an
+active recovery/development build, NOT a production or public-sale release.
+
+PRESERVED FOUNDATION
+- Express 5 application, SQLite persistence and additive migrations.
+- Workspace-scoped tasks, customers, documents, automations, activity and proposals.
+- Authentication, email verification, persistent sessions, CSRF protection,
+  authentication/API rate limits, audit logging, backup and restore.
+- Local Ollama AI Assistant and approval-based AI Employee.
+- Existing Stripe checkout/webhook scaffolding and Resend email integration.
+- Original dark SILO frontend and existing application workflows.
+
+ADDED IN THIS RECOVERY PASS
+- Database migrations 4–13: password-reset and email-change tokens, AI usage ledger, AI execution history,
+  support ticket storage, Stripe webhook idempotency table, and optional MFA fields, workspace invitation storage, calendar events, reusable email templates, email drafts/sent history, reminder preferences, safe email send locks, monotonic Stripe subscription event tracking, and backup/restore data tables. Additive only.
+- Password reset request and one-hour single-use token workflow, with non-enumerating
+  response and Resend delivery (development links are logged locally only).
+- Email address change with current-password confirmation, one-hour single-use verification,
+  uniqueness checks and global session revocation after confirmation.
+- Hourly cleanup of expired sessions, verification tokens, password-reset tokens and
+  email-change tokens.
+- Optional authenticator-app MFA: encrypted TOTP secrets, 30-second TOTP validation with
+  replay protection, 10 hashed single-use recovery codes, MFA login challenge, disable flow,
+  and second-factor checks for password/email changes, ownership transfer and account deletion.
+- Password changes revoke other sessions; password reset revokes sessions.
+- Account deletion with password confirmation and safeguards for shared workspaces
+  and workspaces with an active Stripe subscription.
+- Workspace member listing for owner/admin, plan-capped workspace creation, ownership transfer to an existing member, and workspace switching.
+- Version 3 workspace backups include calendar, email, support and AI history data; restore validates and transactionally replaces the workspace data while preserving account/security and billing records.
+- CSV export/import for tasks, customers and documents; CSV parsing, row validation,
+  500-row/2MB limits, plan limits, and transaction rollback on invalid imports.
+- Industry starter packs: hospitality, retail, professional services, technology,
+  healthcare administration, education and general business.
+- AI token usage ledger and approval/rejection execution history endpoints.
+- Safe AI proposal undo snapshots: verifies all affected records still match the post-approval
+  state before reversing anything; if any record changed, the entire undo is refused.
+  Supports workspace records, task completion, unsent email drafts, and calendar events.
+  Calendar undo is refused after a reminder is sent or a recurring child event is created;
+  email undo is refused once the draft is changed, locked for sending, or sent.
+- AI Employee can propose calendar events and customer email drafts; email sending remains
+  a separate explicit owner/admin action. Safe undo now includes unsent drafts and calendar
+  events, with guards against sent reminders, recurring child events, and email sending. Hosted OpenAI Responses API provider option,
+  local Ollama provider option, and explicit
+  operator-configured fallback provider. Responses API requests use store=false.
+- Monthly workspace AI request quotas, operator-configured token cost estimates, and per-workspace monthly budget alerts (source implemented; provider delivery not yet tested).
+- Support ticket submission, workspace-scoped owner/admin listing and status management.
+- Stripe webhook duplicate-event protection and subscription/customer association checks;
+  handles created/updated/deleted/paused/resumed and invoice.payment_failed events.
+- Frontend password recovery flow, starter pack application, CSV tools, MFA setup/login, team invitations and role management, workspace creation/switching, calendar, templates and email draft UI.
+- Production Dockerfile, Compose deployment template, persistent SQLite volume, non-root
+  runtime user, and container health check.
+
+VALIDATION COMPLETED
+- Node syntax checks passed for all JavaScript source files.
+- MFA utility tests passed: Base32 round-trip, RFC 6238 TOTP vector, replay protection,
+  AES-256-GCM encryption/decryption, wrong-key rejection and recovery-code generation.
+- Stripe event ordering and price-mapping unit checks passed, including stale update/cancellation
+  rejection and prevention of unknown-price paid-tier grants.
+- package.json parses successfully.
+- Dependency-free SQLite compatibility checks passed for the new additive schema (migrations 6–13); this does not replace testing the actual native driver.
+- A GitHub Actions CI workflow is included for Node.js 22/24; it has not run until the source is pushed to GitHub.
+- Current consolidated release archive has not yet been packaged.
+
+NOT YET VERIFIED / NOT COMPLETE
+- npm install could not complete because npm registry DNS resolution failed (EAI_AGAIN); native better-sqlite3 is not installed here.
+- Full runtime/API/integration tests have not passed in this environment.
+- The native driver has not run migrations 4–13 in this environment; the independent
+  SQLite compatibility check covered the new schema additions but not a production database.
+- MFA, team invitations, workspace switching, calendar events and recurring reminders, reusable
+  email templates, and reviewed email drafts/sent history are implemented in source but
+  their end-to-end runtime behavior is not yet tested. The remaining complete migration-16
+  feature set is not implemented in this recovered source.
+- Automatic per-model price synchronization is not complete. Hosted cost estimates and
+  budget alerts require the operator to configure accurate current token rates and Resend.
+- Stripe test-mode lifecycle, Resend delivery, payment-failure recovery and cancellation
+  must be tested with the owner's real provider test credentials.
+- No production security audit, penetration test, load test, accessibility audit,
+  browser/mobile QA, deployment/backup restore drill, or legal review has passed.
+
+DATA SAFETY
+- Database migrations are additive. Preserve the existing .env and server/data directory.
+- Back up server/data/silo.sqlite plus any -wal/-shm files while the server is stopped.
+- Never commit .env, real secrets, customer data, or production database files.
+
+This package must not be represented as ready for public sale until the outstanding
+implementation, testing, security and deployment items above are completed.
+
+
+PUBLIC PRODUCT / SALES PACKAGE UPDATE
+- Added a public marketing page at /website.html describing only currently implemented workspace and approval-based AI capabilities.
+- Rebuilt /pricing.html around the agreed Starter $19/month, Pro $49/month and Business custom pricing; explicitly states per-workspace billing and no per-employee billing.
+- Added registration query handling so public calls to /?register=1 open the account registration form (previously these CTAs returned to login).
+- Added sales kit, demo outline, outreach email, internal Founding 10 offer notes, product-scope disclosure and production operator checklist.
+- Added a launch asset/pricing smoke-check to npm test.
+- These additions do not make Stripe or Resend live, or implement the future AI workforce/marketplace/partner portal/finance command center. The 14-day Stripe trial and trial-ending reminder event are now implemented in source but remain untested against real provider test accounts. This does not replace legal/security review.
+
+
+VALIDATION OF RECOVERY.12 PUBLIC ASSETS AND BUSINESS MEMORY
+- `node --check` passed for public/app.js, server/server.js and scripts/launch-check.js.
+- `node scripts/launch-check.js` passed: public landing/pricing content, agreed pricing, registration CTA behavior and root routing source checks.
+- `node scripts/security-check.js`, `node scripts/stripe-guard-check.js` and `python3 scripts/schema-check.py` passed.
+- `npm install` could not complete in the build environment because package registry access timed out; native `better-sqlite3` is unavailable. Therefore `npm test`, full server startup, API integration, browser end-to-end and Stripe/Resend provider tests remain unverified.
+- Stripe Checkout now requires payment-method collection and applies a 14-day subscription trial; the trial-will-end webhook attempts a reminder email through Resend. Provider delivery and billing lifecycle remain unverified.
+- Updated the AI Assistant system role to the agreed SILO Executive Director framing while retaining the strict rule that it cannot claim or perform unapproved external actions.
+
+BUSINESS MEMORY FEATURE
+- Added additive SQLite migration 13 for workspace-scoped Business Memory entries (goals, decisions, customer context, preferences, lessons, processes and other notes).
+- Added owner/admin create, edit and delete endpoints; all reads and writes are scoped to the active workspace.
+- Added Business Memory workspace page and included the latest 40 entries in AI Assistant and AI Employee workspace context.
+- Upgraded new workspace backups to format v4; restore accepts v2, v3 and v4, with v4 restoring Business Memory transactionally.
+- Added dependency-free SQLite schema/persistence check and source-level launch checks for the new feature. Native-driver and full application runtime verification remain outstanding.
+- Added six specialist AI Employee role profiles. Each profile guides the existing approval-based proposal planner; this is not yet a multi-agent workforce or autonomous department system.

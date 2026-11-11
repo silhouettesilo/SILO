@@ -1,494 +1,282 @@
-const API = "/api";
-const root = document.getElementById("pageRoot");
-const modalRoot = document.getElementById("modalRoot");
-const toastRegion = document.getElementById("toastRegion");
-const sidebar = document.getElementById("sidebar");
+'use strict';
 
-const state = {
-  page: "dashboard",
-  tasks: [], customers: [], documents: [], automations: [], activity: [], proposals: [],
-  settings: {},
-  taskFilter: "all",
-  taskSearch: "",
-  taskSort: "priority",
-  customerSearch: "",
-  documentSearch: "",
-  chat: [{ role: "assistant", text: "Hello! I'm SILO. I can summarize your workspace, help you review tasks, and point you toward useful next steps. What would you like to know?" }],
-  settingsTab: "workspace"
+const appRoot=document.getElementById('app');
+const toastRegion=document.getElementById('toast-region');
+const API='/api';
+const collections=['tasks','customers','documents','automations','activity','proposals'];
+const navItems=[
+  ['dashboard','◈','Dashboard'],['tasks','☷','Tasks'],['customers','♙','Customers'],
+  ['documents','▤','Documents'],['calendar','▦','Calendar'],['emails','✉','Email'],['templates','▧','Templates'],['automations','⌘','Automations'],['analytics','▥','Analytics'],
+  ['assistant','✧','AI Assistant'],['employee','◉','AI Employee'],['memory','◫','Business Memory'],['settings','⚙','Settings']
+];
+const pageInfo={
+ dashboard:['Dashboard','A clear view of what is happening across your business.'],
+ tasks:['Tasks','Plan, prioritize, and track the work that moves your business forward.'],
+ customers:['Customers','Keep customer relationships and important details organized.'],
+ documents:['Documents','A central place for your business notes, procedures, and records.'],
+ calendar:['Calendar','Keep events, deadlines, and reminders organized.'], emails:['Email','Prepare customer emails, review them, and send with approval.'], templates:['Email templates','Create reusable messages for common customer communications.'],
+ automations:['Automations','Build repeatable workflows for routine work.'],
+ analytics:['Analytics','Understand activity and workload across your workspace.'],
+ assistant:['AI Assistant','Ask questions about your workspace and get practical guidance.'],
+ employee:['AI Employee','Turn goals into proposed work, then review and approve each action.'],
+ memory:['Business Memory','Keep important company decisions, goals, preferences and lessons available to your team and SILO.'],
+ settings:['Settings','Manage your workspace, account, and system preferences.']
 };
+let state={authenticated:false,user:null,csrf:'',page:'dashboard',tasks:[],customers:[],documents:[],calendarEvents:[],emailTemplates:[],emails:[],automations:[],activity:[],proposals:[],businessMemory:[],settings:{},analytics:null,aiStatus:null,chat:[{role:'assistant',content:'Hello. I’m SILO, your business assistant. I can help you understand your workspace, plan work, and think through business decisions.'}],settingsTab:'workspace',search:'',filter:'all',sort:'newest',loading:false,setupRequired:false,pendingEmail:'',workspaceRole:'member',workspaces:[],pendingInvite:new URLSearchParams(location.search).get('invite')||'',aiThinking:false};
 
-const PAGE_META = {
-  dashboard: ["YOUR INTELLIGENT BUSINESS SYSTEM", "Welcome to ", "SILO.", "Your business, your intelligence, your control. Let's get to work."],
-  assistant: ["WORKSPACE INTELLIGENCE", "SILO ", "Assistant.", "A local business companion connected to your workspace data."],
-  tasks: ["WORKSPACE MANAGEMENT", "Your ", "Tasks.", "Organize priorities, track deadlines, and keep work moving."],
-  automations: ["WORKFLOW MANAGEMENT", "Your ", "Automations.", "Create repeatable workflows for everyday operations."],
-  customers: ["RELATIONSHIP MANAGEMENT", "Your ", "Customers.", "Keep customer information and relationship notes organized."],
-  analytics: ["BUSINESS INTELLIGENCE", "Workspace ", "Analytics.", "Understand activity and performance across your workspace."],
-  documents: ["KNOWLEDGE MANAGEMENT", "Your ", "Documents.", "Create and organize important workspace information."],
-  employee: ["AI OPERATIONS", "AI ", "Employee.", "Review proposed work and approve actions before SILO carries them out."],
-  settings: ["WORKSPACE CONFIGURATION", "System ", "Settings.", "Configure the identity and preferences of your SILO workspace."]
-};
-
-const PRIORITY_ORDER = { urgent: 0, high: 1, normal: 2, low: 3 };
-const escapeHTML = value => String(value ?? "").replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
-const formatDate = value => value ? new Date(value.length === 10 ? `${value}T12:00:00` : value).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "No date";
-const timeAgo = value => {
-  if (!value) return "";
-  const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000));
-  if (seconds < 60) return "Just now";
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-  if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
-  return formatDate(value);
-};
-const emptyState = (title, detail) => `<div class="empty-state"><strong>${escapeHTML(title)}</strong>${escapeHTML(detail)}</div>`;
-const pageHeading = page => {
-  const meta = PAGE_META[page];
-  return `<div class="page-heading"><div><p class="eyebrow">${meta[0]}</p><h1>${meta[1]}<span>${meta[2]}</span></h1><p class="page-subtitle">${meta[3]}</p></div></div>`;
-};
-
-async function api(path, options = {}) {
-  const response = await fetch(`${API}${path}`, {
-    ...options,
-    headers: { ...(options.body ? { "Content-Type": "application/json" } : {}), ...(options.headers || {}) }
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || `Request failed (${response.status}).`);
-  return data;
+async function request(path,options={}){
+ const headers={'Content-Type':'application/json',...(options.headers||{})};
+ if(options.method&&options.method!=='GET'&&state.csrf) headers['X-CSRF-Token']=state.csrf;
+ const response=await fetch(API+path,{...options,headers,credentials:'same-origin'});
+ const data=await response.json().catch(()=>({}));
+ if(!response.ok){const error=new Error(data.error||`Request failed (${response.status})`);error.code=data.code;throw error;}
+ return data;
 }
-function toast(message, type = "success") {
-  const item = document.createElement("div");
-  item.className = `toast ${type}`;
-  item.textContent = message;
-  toastRegion.appendChild(item);
-  setTimeout(() => item.remove(), 3600);
+function esc(value=''){return String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function toast(message,error=false){const el=document.createElement('div');el.className=`toast${error?' error':''}`;el.textContent=message;let wrap=document.querySelector('.toast-wrap');if(!wrap){wrap=document.createElement('div');wrap.className='toast-wrap';wrap.setAttribute('aria-live','polite');wrap.setAttribute('aria-atomic','true');document.body.append(wrap);}wrap.append(el);setTimeout(()=>el.remove(),3400);}
+function localDateTime(value){if(!value)return '';const d=new Date(value);if(Number.isNaN(d.getTime()))return '';return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);}
+function date(value){if(!value)return '—';const d=new Date(value);return Number.isNaN(d.getTime())?'—':d.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});}
+function ago(value){if(!value)return '';const mins=Math.max(0,Math.floor((Date.now()-new Date(value).getTime())/60000));if(mins<1)return 'Just now';if(mins<60)return `${mins}m ago`;if(mins<1440)return `${Math.floor(mins/60)}h ago`;return `${Math.floor(mins/1440)}d ago`;}
+function titleCase(v=''){return String(v).replace(/[_-]/g,' ').replace(/\b\w/g,c=>c.toUpperCase());}
+function empty(title,desc='Nothing here yet.'){return `<div class="empty"><b>${esc(title)}</b>${esc(desc)}</div>`;}
+function heading(actions=''){const [title,desc]=pageInfo[state.page];return `<div class="page-heading"><div><h1>${title}</h1><p>${desc}</p></div><div class="heading-actions">${actions}</div></div>`;}
+function btn(label,action,kind='ghost'){return `<button class="btn ${kind}" data-action="${action}">${label}</button>`;}
+function field(label,name,value='',type='text',placeholder=''){return `<div class="field"><label for="f-${name}">${label}</label><input id="f-${name}" name="${name}" type="${type}" value="${esc(value??'')}" placeholder="${esc(placeholder)}"></div>`;}
+function textarea(label,name,value='',placeholder=''){return `<div class="field"><label for="f-${name}">${label}</label><textarea id="f-${name}" name="${name}" placeholder="${esc(placeholder)}">${esc(value??'')}</textarea></div>`;}
+function selectField(label,name,options,value){return `<div class="field"><label for="f-${name}">${label}</label><select id="f-${name}" name="${name}">${options.map(o=>`<option value="${esc(o[0])}" ${o[0]===value?'selected':''}>${esc(o[1])}</option>`).join('')}</select></div>`;}
+async function refresh(){
+ const results=await Promise.all(collections.map(c=>request('/'+c)));
+ collections.forEach((c,i)=>state[c]=results[i]);
+ state.settings=await request('/settings');
+ [state.calendarEvents,state.emailTemplates,state.emails,state.businessMemory]=await Promise.all([request('/calendar/events'),request('/email-templates'),request('/emails'),request('/memory')]);
+ state.analytics=await request('/analytics');
 }
-function setBusy(button, busy, label = "Saving...") {
-  if (!button) return;
-  if (busy) {
-    button.dataset.originalText = button.textContent;
-    button.disabled = true;
-    button.textContent = label;
-  } else {
-    button.disabled = false;
-    button.textContent = button.dataset.originalText || button.textContent;
-  }
+function renderAuth(mode='login',setupRequired=state.setupRequired){
+ const register=mode==='register';
+ if(mode==='forgot'){
+  appRoot.innerHTML=`<div class="auth-shell"><section class="auth-brand"><div class="brand-lockup"><div class="brand-mark">S</div><span>SILO</span></div><h1>Back to business.<br><span style="color:#bca5f0">Securely.</span></h1><p>We will send a one-time reset link if an account matches your address.</p></section><section class="auth-form-wrap"><form class="auth-card" id="forgot-form"><div class="eyebrow">ACCOUNT RECOVERY</div><h2>Reset your password</h2>${field('Email address','email','','email','you@company.com')}<button class="btn primary full" type="submit">Send reset link</button><div class="auth-switch"><button type="button" class="link-btn" data-auth-switch="login">Back to sign in</button></div></form></section></div>`;return;
+ }
+ if(mode==='reset'){
+  appRoot.innerHTML=`<div class="auth-shell"><section class="auth-brand"><div class="brand-lockup"><div class="brand-mark">S</div><span>SILO</span></div><h1>A fresh start.<br><span style="color:#bca5f0">A stronger password.</span></h1><p>Choose a new password for your SILO account.</p></section><section class="auth-form-wrap"><form class="auth-card" id="reset-form"><div class="eyebrow">ACCOUNT RECOVERY</div><h2>Choose a new password</h2>${field('New password','password','','password','At least 12 characters')}<button class="btn primary full" type="submit">Update password</button></form></section></div>`;return;
+ }
+ if(mode==='mfa'){
+  appRoot.innerHTML=`<div class="auth-shell"><section class="auth-brand"><div class="brand-lockup"><div class="brand-mark">S</div><span>SILO</span></div><h1>One final check.<br><span style="color:#bca5f0">Verify it is you.</span></h1><p>Enter the six-digit code from your authenticator app, or use one of your recovery codes.</p></section><section class="auth-form-wrap"><form class="auth-card" id="mfa-login-form"><div class="eyebrow">MULTI-FACTOR AUTHENTICATION</div><h2>Security verification</h2>${field('Authenticator or recovery code','code','','text','6-digit code or recovery code')}<button class="btn primary full" type="submit">Verify and sign in</button><div class="auth-switch"><button type="button" class="link-btn" data-auth-switch="login">Cancel and return to sign in</button></div></form></section></div>`;return;
+ }
+ if(mode==='pending'){
+  appRoot.innerHTML=`<div class="auth-shell"><section class="auth-brand"><div class="brand-lockup"><div class="brand-mark">S</div><span>SILO</span></div><h1>One more step.<br><span style="color:#bca5f0">Verify your email.</span></h1><p>Confirm that you own your email address to activate your SILO account.</p></section><section class="auth-form-wrap"><form class="auth-card" id="auth-resend-form"><div class="eyebrow">EMAIL CONFIRMATION</div><h2>Check your inbox</h2><p class="subtle">We sent a one-time verification link to <strong>${esc(state.pendingEmail)}</strong>. The link expires in 24 hours. You must verify before signing in.</p>${field('Email address','email',state.pendingEmail,'email','you@company.com')}<button class="btn primary full" type="submit">Resend confirmation email</button><div class="auth-switch"><button type="button" class="link-btn" data-auth-switch="login">Back to sign in</button></div></form></section></div>`;
+  return;
+ }
+ appRoot.innerHTML=`<div class="auth-shell"><section class="auth-brand"><div class="brand-lockup"><div class="brand-mark">S</div><span>SILO</span></div><h1>Run your business.<br><span style="color:#bca5f0">Think beyond it.</span></h1><p>An intelligent business workspace that brings your operations, customers, documents, and AI assistance together in one place.</p></section><section class="auth-form-wrap"><form class="auth-card" id="auth-form" data-mode="${mode}"><div class="eyebrow">${register?'Create your workspace':'Welcome back'}</div><h2>${register?'Build your SILO':'Sign in to SILO'}</h2><p class="subtle">${register?'Set up your account and start organizing your business. You will need to verify your email before signing in.':'Enter your credentials to continue to your workspace.'}</p>${register?field('Your name','displayName','','text','Name'):''}${field('Email address','email','','email','you@company.com')}${field('Password','password','','password',register?'At least 12 characters':'Your password')}${register?field('Workspace name','workspaceName','','text','My Business'):''}${register&&setupRequired?field('One-time setup key','setupKey','','text','Key shown in your SILO terminal'):''}<button class="btn primary full" type="submit">${register?'Create account':'Sign in'}</button>${!register?`<div class="auth-switch"><button type="button" class="link-btn" data-forgot-password>Forgot password?</button> · <button type="button" class="link-btn" data-resend-verification>Resend verification email</button></div>`:''}<div class="auth-switch">${register?'Already have an account?':'New to SILO?'} <button type="button" class="link-btn" data-auth-switch="${register?'login':'register'}">${register?'Sign in':'Create an account'}</button></div><div class="auth-switch"><a class="link-btn" href="/website.html">Explore SILO</a> · <a class="link-btn" href="/pricing.html">View pricing</a></div></form></section></div>`;
 }
-async function refreshData() {
-  const names = ["tasks", "customers", "documents", "automations", "activity", "proposals"];
-  const results = await Promise.all(names.map(name => api(`/${name}`)));
-  names.forEach((name, index) => { state[name] = results[index]; });
-  state.settings = await api("/settings");
-  updateWorkspaceLabels();
+function shell(){
+ appRoot.innerHTML=`<div class="app-shell"><aside class="sidebar"><div class="side-brand"><div class="brand-mark">S</div><span>SILO</span></div><div><div class="nav-label">Workspace</div><nav class="nav-list">${navItems.map(([id,icon,label])=>`<button class="nav-item ${state.page===id?'active':''}" data-page="${id}" title="${label}"><span class="nav-icon">${icon}</span><span>${label}</span></button>`).join('')}</nav></div><div class="sidebar-bottom"><div class="workspace-chip"><strong>${esc(state.settings.workspaceName||'My Workspace')}</strong><small>${esc(state.user?.email||'')}</small></div><button class="nav-item" data-action="logout"><span class="nav-icon">↪</span>Sign out</button></div></aside><main class="main"><header class="topbar"><div class="crumb">SILO <span style="color:#5c526b">/</span> ${pageInfo[state.page][0]}</div><div class="right"><select id="workspace-switcher" class="top-workspace-select" aria-label="Switch workspace">${(state.workspaces||[]).map(w=>`<option value="${esc(w.id)}" ${w.id===state.activeWorkspaceId?'selected':''}>${esc(w.name)}</option>`).join('')}</select>${state.workspaceRole==='owner'?'<button class="icon-btn" data-action="create-workspace" title="Create workspace" aria-label="Create workspace">＋</button>':''}<span class="muted" style="font-size:11px">${esc(state.user?.displayName||'')}</span><div class="avatar">${esc((state.user?.displayName||'S').slice(0,1).toUpperCase())}</div></div></header><section class="content" id="page-content"></section></main></div><div id="modal-root"></div>`;
+ renderPage();
 }
-function updateWorkspaceLabels() {
-  const name = state.settings.workspaceName || "My Workspace";
-  ["workspaceName", "accountWorkspace"].forEach(id => {
-    const element = document.getElementById(id);
-    if (element) element.textContent = name;
-  });
-  const profile = document.getElementById("profileName");
-  if (profile) profile.textContent = state.settings.ownerName || "Workspace";
+async function loadWorkspaceTeam(){try{const [members,invites]=await Promise.all([request('/workspace/members'),request('/workspace/invitations')]);const memberRoot=document.getElementById('team-members-list'),inviteRoot=document.getElementById('team-invitations-list');if(memberRoot)memberRoot.innerHTML=members.map(m=>`<div class="record-row"><div class="task-main"><strong>${esc(m.display_name)}</strong><small>${esc(m.email)} · joined ${date(m.created_at)}</small></div>${state.workspaceRole==='owner'&&m.role!=='owner'?`<select class="input member-role" data-member-role="${esc(m.id)}" aria-label="Role for ${esc(m.display_name)}"><option value="member" ${m.role==='member'?'selected':''}>Member</option><option value="admin" ${m.role==='admin'?'selected':''}>Admin</option></select>`:`<span class="pill">${esc(m.role)}</span>`}${m.role!=='owner'?`<button class="btn ghost" data-remove-member="${esc(m.id)}">Remove</button>`:''}</div>`).join('')||empty('No team members');if(inviteRoot)inviteRoot.innerHTML=invites.filter(i=>!i.accepted_at).map(i=>`<div class="record-row"><div class="task-main"><strong>${esc(i.email)}</strong><small>${esc(i.role)} · expires ${date(new Date(i.expires_at).toISOString())}</small></div><button class="btn ghost" data-cancel-invite="${esc(i.id)}">Cancel</button></div>`).join('')||empty('No pending invitations');const ownerSelect=document.getElementById('transfer-owner-select');if(ownerSelect&&state.workspaceRole==='owner')ownerSelect.innerHTML=selectField('New owner','newOwnerId',members.filter(m=>m.role!=='owner').map(m=>[m.id,`${m.display_name} (${m.email})`]),'');}catch(e){const root=document.getElementById('team-members-list');if(root)root.textContent=e.message;}}
+async function acceptPendingInvite(){if(!state.pendingInvite)return;try{await request('/workspace/invitations/accept',{method:'POST',body:JSON.stringify({token:state.pendingInvite})});state.pendingInvite='';history.replaceState({},'',location.pathname);toast('You joined the invited workspace.');}catch(e){toast(e.message,true);}}
+async function loadSupportTickets(){const root=document.getElementById('support-ticket-list');if(!root)return;try{const rows=await request('/support/tickets');root.innerHTML=`<h4>Workspace support requests</h4>${rows.map(t=>`<div class="record-row"><div class="task-main"><strong>${esc(t.subject)}</strong><small>${esc(t.status)} · ${date(t.created_at)}</small><small>${esc(t.message.slice(0,220))}</small></div><select class="input support-status" data-support-id="${esc(t.id)}" aria-label="Status for ${esc(t.subject)}"><option value="open" ${t.status==='open'?'selected':''}>Open</option><option value="in_progress" ${t.status==='in_progress'?'selected':''}>In progress</option><option value="resolved" ${t.status==='resolved'?'selected':''}>Resolved</option></select></div>`).join('')||empty('No support requests')}`;}catch(e){root.textContent=e.message;}}
+async function loadBillingStatus(){try{state.billing=await request('/billing/status');const status=document.getElementById('billing-status-text');if(status)status.textContent=`Current plan: ${state.billing.plan} · ${state.billing.status}`;const panel=status?.parentElement;if(panel){const note=panel.querySelector('p.subtle[style]');if(note)note.textContent=state.billing.configured?'Paid plans are available through secure Stripe checkout.':'Stripe checkout is not configured by the SILO operator yet.';const buttons=panel.querySelectorAll('[data-action^="billing-checkout"],[data-action="billing-portal"]');buttons.forEach(b=>b.remove());if(state.workspaceRole==='owner'&&state.billing.configured){panel.insertAdjacentHTML('beforeend',`<button class="btn primary" data-action="billing-checkout-starter">Choose Starter</button><button class="btn primary" data-action="billing-checkout-pro">Choose Pro</button><button class="btn ghost" data-action="billing-portal">Manage subscription</button>`);}}}catch(e){const status=document.getElementById('billing-status-text');if(status)status.textContent=e.message;}}
+async function loadAiBudget(){try{const b=await request('/ai/budget');const status=document.getElementById('ai-budget-status'),form=document.getElementById('ai-budget-form');if(status)status.textContent=b.costEstimateConfigured?'Cost estimates are configured. SILO emails an alert once per month when estimated hosted AI spend reaches the limit.':'Configure hosted AI token rates in the server environment before budget alerts can estimate spending.';if(form)form.elements.monthlyBudgetUsd.value=b.monthlyBudgetUsd;}catch(e){const status=document.getElementById('ai-budget-status');if(status)status.textContent=e.message;}}
+async function loadNotificationPreferences(){try{const p=await request('/account/notifications');const form=document.getElementById('notification-preferences-form');if(form)form.elements.calendarReminders.checked=p.calendarReminders!==false;const status=document.getElementById('notification-preference-status');if(status)status.textContent='Choose which account notifications you want to receive.';}catch(e){const status=document.getElementById('notification-preference-status');if(status)status.textContent=e.message;}}
+async function loadMfaStatus(){try{const status=await request('/account/mfa');const el=document.getElementById('mfa-status-text');if(el)el.textContent=status.enabled?`MFA is enabled · ${status.recoveryCodesRemaining} recovery codes remaining.`:'MFA is currently disabled. Enable it with an authenticator app for stronger account security.';}catch(e){const el=document.getElementById('mfa-status-text');if(el)el.textContent=e.message;}}
+function renderPage(){
+ const root=document.getElementById('page-content');if(!root)return;
+ const pages={dashboard:renderDashboard,tasks:renderTasks,customers:renderCustomers,documents:renderDocuments,calendar:renderCalendar,emails:renderEmails,templates:renderTemplates,automations:renderAutomations,analytics:renderAnalytics,assistant:renderAssistant,employee:renderEmployee,memory:renderMemory,settings:renderSettings};
+ root.innerHTML=(pages[state.page]||renderDashboard)();
+ if(state.page==='assistant')checkAiStatus();
+ if(state.page==='settings'&&state.settingsTab==='account'){loadMfaStatus();loadNotificationPreferences();loadBillingStatus();}
+ if(state.page==='settings'&&state.settingsTab==='system'){loadAiBudget();loadSupportTickets();}
+ if(state.page==='settings'&&state.settingsTab==='workspace'&&['owner','admin'].includes(state.workspaceRole)) loadWorkspaceTeam();
 }
-function showPage(page) {
-  if (!PAGE_META[page]) return;
-  state.page = page;
-  document.querySelectorAll(".nav-item[data-page]").forEach(button => button.classList.toggle("active", button.dataset.page === page));
-  sidebar.classList.remove("open");
-  renderPage();
+async function checkAiStatus(){
+ const status=document.getElementById('ai-status');if(!status)return;
+ try{const result=await request('/ai/status');state.aiStatus=result;status.textContent=result.available?`AI Online · ${result.model||'Local model'}`:'AI Offline';status.className=`ai-status ${result.available?'online':'offline'}`;status.title=result.available?`${result.provider||'AI'} provider is reachable.`:(result.message||'Configured AI provider is not reachable.');}
+ catch(error){state.aiStatus={available:false,message:error.message};status.textContent='AI Offline';status.className='ai-status offline';status.title=error.message;}
 }
-function renderPage() {
-  const renderer = {
-    dashboard: renderDashboard, assistant: renderAssistant, tasks: renderTasks,
-    automations: renderAutomations, customers: renderCustomers, analytics: renderAnalytics,
-    documents: renderDocuments, employee: renderEmployee, settings: renderSettings
-  }[state.page];
-  if (renderer) renderer();
+function stat(label,value,note){return `<div class="stat-card"><div class="stat-label">${label}</div><div class="stat-value">${value}</div><div class="stat-note">${note}</div></div>`;}
+function renderDashboard(){
+ const open=state.tasks.filter(t=>t.status!=='completed');const high=open.filter(t=>t.priority==='high');
+ const recent=[...state.activity].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).slice(0,6);
+ return heading(btn('＋ New task','new-task','primary'))+`<div class="grid stats-grid">${stat('OPEN TASKS',open.length,'Work still in progress')}${stat('HIGH PRIORITY',high.length,'Needs focused attention')}${stat('CUSTOMERS',state.customers.length,'Customer records')}${stat('DOCUMENTS',state.documents.length,'Workspace library')}</div><div class="grid dashboard-grid"><section class="panel"><div class="panel-head"><h3>Priority queue</h3><span>${open.length} open</span></div>${open.sort((a,b)=>(b.priority==='high')-(a.priority==='high')).slice(0,7).map(t=>`<div class="task-row"><div class="task-main"><strong>${esc(t.title)}</strong><small>${esc(t.description||'No description')} · ${date(t.dueDate)}</small></div><span class="pill ${t.priority==='high'?'red':t.priority==='low'?'green':'amber'}">${esc(t.priority||'medium')}</span><button class="icon-btn" data-edit="tasks" data-id="${esc(t.id)}">Edit</button></div>`).join('')||empty('You are all caught up','Create a task to start organizing your work.')}</section><section class="panel"><div class="panel-head"><h3>Quick actions</h3><span>Get moving</span></div><div class="grid quick-grid"><button class="quick-action" data-action="new-task"><b>＋ Create task</b><span>Capture a next step</span></button><button class="quick-action" data-action="new-customer"><b>♙ Add customer</b><span>Save a relationship</span></button><button class="quick-action" data-action="new-document"><b>▤ New document</b><span>Record an idea</span></button><button class="quick-action" data-page="employee"><b>✧ AI Employee</b><span>Plan work with AI</span></button></div><div class="panel-head" style="margin-top:24px"><h3>Recent activity</h3></div>${recent.map(a=>`<div class="activity-row"><div class="task-main"><strong>${esc(a.description||a.type||'Activity')}</strong><small>${ago(a.createdAt)}</small></div></div>`).join('')||empty('No activity yet')}</section></div>`;
 }
-function statCard(icon, label, value, note) {
-  return `<div class="stat-card"><div class="stat-top"><span class="tiny-label">${escapeHTML(label)}</span><span class="stat-icon">${icon}</span></div><div class="stat-value">${value}</div><div class="stat-foot">${escapeHTML(note)}</div></div>`;
+function searchToolbar(placeholder='Search...',filters=[]){return `<div class="toolbar"><div class="search-field"><input id="list-search" placeholder="${placeholder}" value="${esc(state.search)}"></div>${filters.length?`<select id="list-filter">${filters.map(x=>`<option value="${x[0]}" ${state.filter===x[0]?'selected':''}>${x[1]}</option>`).join('')}</select>`:''}<select id="list-sort"><option value="newest" ${state.sort==='newest'?'selected':''}>Newest first</option><option value="oldest" ${state.sort==='oldest'?'selected':''}>Oldest first</option><option value="az" ${state.sort==='az'?'selected':''}>A–Z</option></select></div>`;}
+function filtered(items){let a=[...items];if(state.search){const q=state.search.toLowerCase();a=a.filter(x=>JSON.stringify(x).toLowerCase().includes(q));}if(state.filter!=='all'&&state.filter)a=a.filter(x=>x.status===state.filter);if(state.sort==='oldest')a.reverse();if(state.sort==='az')a.sort((x,y)=>(x.title||x.name||'').localeCompare(y.title||y.name||''));return a;}
+function tablePage(collection,columns,addAction,filters=[]){
+ const records=filtered(state[collection]);const rows=records.map(r=>`<tr>${columns.map(([key,label])=>`<td>${key==='status'||key==='priority'?`<span class="pill ${r[key]==='completed'?'green':r[key]==='high'?'red':''}">${esc(titleCase(r[key]||'—'))}</span>`:esc(key==='dueDate'?date(r[key]):r[key]||'—')}</td>`).join('')}<td><div class="row-actions"><button class="icon-btn" data-edit="${collection}" data-id="${esc(r.id)}">Edit</button><button class="icon-btn" data-delete="${collection}" data-id="${esc(r.id)}">Delete</button></div></td></tr>`).join('');
+ return heading(btn('＋ Add '+collection.slice(0,-1),addAction,'primary'))+searchToolbar(`Search ${collection}...`,filters)+`<div class="panel table-wrap"><table class="data-table"><thead><tr>${columns.map(c=>`<th>${c[1]}</th>`).join('')}<th>Actions</th></tr></thead><tbody>${rows}</tbody></table>${rows?'':empty('No records found','Add a record or adjust your search.')}</div>`;
 }
-function renderDashboard() {
-  const active = state.tasks.filter(t => !t.completed);
-  const completed = state.tasks.filter(t => t.completed);
-  const urgent = active.filter(t => t.priority === "urgent").length;
-  const enabled = state.automations.filter(a => a.enabled).length;
-  const recent = state.activity.slice(0, 6);
-  const priorityTasks = [...active].sort((a,b) => (PRIORITY_ORDER[a.priority || "normal"] ?? 2) - (PRIORITY_ORDER[b.priority || "normal"] ?? 2)).slice(0,5);
-  root.innerHTML = `<div class="page-content">${pageHeading("dashboard")}
-    <section class="stat-grid">
-      ${statCard("▤", "ACTIVE TASKS", active.length, `${completed.length} completed`)}
-      ${statCard("♙", "CUSTOMERS", state.customers.length, "Saved customer records")}
-      ${statCard("⟳", "ACTIVE AUTOMATIONS", enabled, `${state.automations.length} total workflows`)}
-      ${statCard("!", "URGENT TASKS", urgent, "Require your attention")}
-    </section>
-    <div class="dashboard-grid">
-      <section class="panel"><div class="panel-title"><div><h2>Priority Queue</h2><p>Your highest-priority open work</p></div><button class="text-button" data-action="navigate" data-page="tasks">View all tasks →</button></div>
-        ${priorityTasks.length ? `<div class="simple-list">${priorityTasks.map(t=>`<div class="simple-list-item"><span class="activity-dot"></span><div style="flex:1;min-width:0"><strong>${escapeHTML(t.title)}</strong><small>${escapeHTML(t.description || "No description")} · ${t.dueDate ? `Due ${formatDate(t.dueDate)}` : "No due date"}</small></div><span class="pill priority-${escapeHTML(t.priority || "normal")}">${escapeHTML(t.priority || "normal")}</span></div>`).join("")}</div>` : emptyState("You're all caught up","Create a task to start building your priority queue.")}
-      </section>
-      <section class="panel"><div class="panel-title"><div><h2>Quick Actions</h2><p>Move your work forward</p></div></div><div class="quick-actions">
-        <button class="quick-action" data-action="new-task"><span>＋</span>Create a task</button>
-        <button class="quick-action" data-action="new-customer"><span>♙</span>Add a customer</button>
-        <button class="quick-action" data-action="new-document"><span>▧</span>New document</button>
-        <button class="quick-action" data-action="navigate" data-page="assistant"><span>✧</span>Ask SILO</button>
-      </div></section>
-      <section class="panel"><div class="panel-title"><div><h2>Recent Activity</h2><p>Latest changes in your workspace</p></div><span class="tiny-label">LIVE DATA</span></div>
-        ${recent.length ? `<div class="activity-list">${recent.map(a=>`<div class="activity-item"><span class="activity-dot"></span><div><strong>${escapeHTML(a.description)}</strong><small>${timeAgo(a.createdAt)}</small></div></div>`).join("")}</div>` : emptyState("No activity yet","Your workspace activity will appear here.")}
-      </section>
-      <section class="panel"><div class="panel-title"><div><h2>Workspace Snapshot</h2><p>A quick look at your operations</p></div></div>
-        <div class="metric-row"><span>Task completion</span><strong>${state.tasks.length ? Math.round(completed.length/state.tasks.length*100) : 0}%</strong></div>
-        <div class="bar-track"><div class="bar-fill" style="width:${state.tasks.length ? completed.length/state.tasks.length*100 : 0}%"></div></div>
-        <div class="metric-row"><span>Saved documents</span><strong>${state.documents.length}</strong></div>
-        <div class="metric-row"><span>Pending AI approvals</span><strong>${state.proposals.filter(p=>p.status==="pending").length}</strong></div>
-        <div class="metric-row"><span>Workspace mode</span><strong>Local preview</strong></div>
-      </section>
-    </div></div>`;
+function renderTasks(){return tablePage('tasks',[['title','Task'],['priority','Priority'],['status','Status'],['dueDate','Due date']],'new-task',[['all','All tasks'],['todo','To do'],['in_progress','In progress'],['completed','Completed']]);}
+function renderCustomers(){return tablePage('customers',[['name','Customer'],['email','Email'],['company','Company'],['status','Status']],'new-customer');}
+function renderDocuments(){return tablePage('documents',[['title','Document'],['category','Category'],['updatedAt','Updated']],'new-document');}
+function renderAutomations(){
+ const rows=state.automations.map(a=>`<div class="record-row"><div class="task-main"><strong>${esc(a.name||'Untitled automation')}</strong><small>${esc(titleCase(a.trigger||'manual'))} · ${esc(a.action||'No action configured')}</small></div><span class="pill ${a.enabled===false?'':'green'}">${a.enabled===false?'Disabled':'Enabled'}</span><button class="icon-btn" data-toggle-auto="${esc(a.id)}">${a.enabled===false?'Enable':'Disable'}</button><button class="icon-btn" data-edit="automations" data-id="${esc(a.id)}">Edit</button><button class="icon-btn" data-run-auto="${esc(a.id)}">Run</button></div>`).join('');
+ return heading(btn('＋ New automation','new-automation','primary'))+`<div class="panel">${rows||empty('No automations yet','Create a workflow to automate a repeatable task.')}</div>`;
 }
-function renderTasks() {
-  let tasks = [...state.tasks];
-  const query = state.taskSearch.toLowerCase();
-  if (query) tasks = tasks.filter(t => `${t.title} ${t.description || ""}`.toLowerCase().includes(query));
-  if (state.taskFilter === "active") tasks = tasks.filter(t=>!t.completed);
-  if (state.taskFilter === "completed") tasks = tasks.filter(t=>t.completed);
-  if (state.taskFilter === "urgent") tasks = tasks.filter(t=>t.priority==="urgent" && !t.completed);
-  tasks.sort((a,b) => state.taskSort === "priority" ? (PRIORITY_ORDER[a.priority || "normal"]??2)-(PRIORITY_ORDER[b.priority || "normal"]??2) : state.taskSort === "newest" ? new Date(b.createdAt)-new Date(a.createdAt) : state.taskSort === "oldest" ? new Date(a.createdAt)-new Date(b.createdAt) : (a.dueDate || "9999").localeCompare(b.dueDate || "9999"));
-  root.innerHTML = `<div class="page-content">${pageHeading("tasks")}
-    <section class="panel">
-      <div class="panel-title"><div><h2>Task Manager</h2><p>${state.tasks.filter(t=>!t.completed).length} active · ${state.tasks.filter(t=>t.completed).length} completed</p></div><button class="btn btn-primary" data-action="new-task">＋ New Task</button></div>
-      <div class="toolbar"><div class="search-field"><input id="taskSearch" placeholder="Search tasks..." value="${escapeHTML(state.taskSearch)}"></div>
-        <div class="filter-tabs">${[["all","All"],["active","Active"],["completed","Completed"],["urgent","Urgent"]].map(([v,l])=>`<button class="filter-tab ${state.taskFilter===v?"active":""}" data-action="task-filter" data-value="${v}">${l}</button>`).join("")}</div>
-        <select class="field" id="taskSort" aria-label="Sort tasks"><option value="priority" ${state.taskSort==="priority"?"selected":""}>Sort: Priority</option><option value="due" ${state.taskSort==="due"?"selected":""}>Sort: Due date</option><option value="newest" ${state.taskSort==="newest"?"selected":""}>Sort: Newest</option><option value="oldest" ${state.taskSort==="oldest"?"selected":""}>Sort: Oldest</option></select>
-      </div>
-      ${tasks.length ? `<div class="task-grid">${tasks.map(taskCard).join("")}</div>` : emptyState("No matching tasks","Try another filter or create a new task.")}</section></div>`;
+function renderCalendar(){
+ const rows=[...state.calendarEvents].sort((a,b)=>new Date(a.starts_at)-new Date(b.starts_at));
+ return heading()+`<section class="panel"><div class="panel-head"><h3>Create calendar event</h3><span>Reminders are sent to your account email</span></div><form id="calendar-event-form"><div class="field-grid">${field('Event title','title','','text','Team meeting')}${field('Location','location','','text','Optional')}</div>${textarea('Description','description','','Details or preparation notes')}<div class="field-grid">${field('Starts','startsAt','','datetime-local')}${field('Ends','endsAt','','datetime-local')}</div><div class="field-grid">${selectField('Reminder','reminderMinutes',[[0,'No reminder'],[5,'5 minutes before'],[15,'15 minutes before'],[30,'30 minutes before'],[60,'1 hour before'],[1440,'1 day before'],[10080,'1 week before']],0)}${selectField('Repeat','recurrence',[['none','Does not repeat'],['daily','Daily'],['weekly','Weekly'],['monthly','Monthly']],'none')}</div>${field('Repeat until (optional)','recurrenceUntil','','date')}<button class="btn primary" type="submit">Save event</button></form></section><section class="panel" style="margin-top:15px"><div class="panel-head"><h3>Upcoming and past events</h3><span>${rows.length} events</span></div>${rows.map(e=>`<details class="template-card"><summary><strong>${esc(e.title)}</strong> · ${new Date(e.starts_at).toLocaleString()} <span class="pill">${esc(e.recurrence)}</span></summary><form class="calendar-edit-form" data-event-id="${esc(e.id)}">${field('Event title','title',e.title)}${field('Location','location',e.location)}${textarea('Description','description',e.description)}<div class="field-grid">${field('Starts','startsAt',localDateTime(e.starts_at),'datetime-local')}${field('Ends','endsAt',localDateTime(e.ends_at),'datetime-local')}</div><div class="field-grid">${selectField('Reminder','reminderMinutes',[[0,'No reminder'],[5,'5 minutes before'],[15,'15 minutes before'],[30,'30 minutes before'],[60,'1 hour before'],[1440,'1 day before'],[10080,'1 week before']],e.reminder_minutes)}${selectField('Repeat','recurrence',[['none','Does not repeat'],['daily','Daily'],['weekly','Weekly'],['monthly','Monthly']],e.recurrence)}</div>${field('Repeat until','recurrenceUntil',e.recurrence_until?e.recurrence_until.slice(0,10):'','date')}<button class="btn primary" type="submit">Save event</button>${e.reminder_status==='failed'||e.reminder_status==='development'||e.reminder_status==='disabled'?`<button class="btn ghost" type="button" data-retry-reminder="${esc(e.id)}">Retry reminder</button>`:''}<button class="btn ghost" type="button" data-delete-event="${esc(e.id)}">Delete event series</button></form></details>`).join('')||empty('No calendar events','Add an event to begin scheduling your work.')}
+</section>`;
 }
-function taskCard(t) {
-  const overdue = t.dueDate && !t.completed && new Date(`${t.dueDate}T23:59:59`) < new Date();
-  return `<article class="task-card ${t.completed?"is-complete":""}"><div class="task-card-head"><h3>${escapeHTML(t.title)}</h3><span class="pill priority-${escapeHTML(t.priority||"normal")}">${escapeHTML(t.priority||"normal")}</span></div>
-    ${t.description?`<p class="task-description">${escapeHTML(t.description)}</p>`:""}
-    <div class="task-meta"><span class="pill ${t.completed?"status-completed":""}">${t.completed?"Completed":"Active"}</span>${t.dueDate?`<span class="pill" style="${overdue?"color:var(--red)":""}">${overdue?"Overdue · ":"Due "}${formatDate(t.dueDate)}</span>`:""}</div>
-    <div class="task-card-foot"><span class="task-date">Created ${formatDate(t.createdAt)}</span><div class="card-actions"><button class="text-button" data-action="edit-task" data-id="${t.id}">Edit</button><button class="text-button" data-action="toggle-task" data-id="${t.id}" data-completed="${!t.completed}">${t.completed?"Reopen":"Complete"}</button><button class="text-button danger" data-action="delete-task" data-id="${t.id}">Delete</button></div></div></article>`;
+function renderTemplates(){
+ return heading()+`<section class="panel"><div class="panel-head"><h3>Create email template</h3><span>Reusable drafts; nothing is sent automatically</span></div><form id="template-form">${field('Template name','name','','text','Customer follow-up')}${field('Category','category','','text','follow_up')}${field('Subject','subject','','text','A quick follow-up')}${textarea('Message body','body','','Use placeholders such as {{customer_name}} and {{business_name}}')}<button class="btn primary" type="submit">Save template</button></form></section><section class="panel" style="margin-top:15px"><div class="panel-head"><h3>Your templates</h3><span>${state.emailTemplates.length} templates</span></div>${state.emailTemplates.map(t=>`<details class="template-card"><summary><strong>${esc(t.name)}</strong> <span class="pill">${esc(t.category)}</span></summary><form class="template-edit-form" data-template-id="${esc(t.id)}">${field('Name','name',t.name)}${field('Category','category',t.category)}${field('Subject','subject',t.subject)}${textarea('Body','body',t.body)}<button class="btn primary" type="submit">Save changes</button><button class="btn ghost" type="button" data-use-template="${esc(t.id)}">Use as draft</button><button class="btn ghost" type="button" data-delete-template="${esc(t.id)}">Delete template</button></form></details>`).join('')||empty('No templates')}</section>`;
 }
-function renderCustomers() {
-  const q = state.customerSearch.toLowerCase();
-  const records = state.customers.filter(c=>`${c.name} ${c.company||""} ${c.email||""} ${c.phone||""}`.toLowerCase().includes(q));
-  root.innerHTML = `<div class="page-content">${pageHeading("customers")}<section class="panel"><div class="panel-title"><div><h2>Customer Directory</h2><p>${state.customers.length} saved customer records</p></div><button class="btn btn-primary" data-action="new-customer">＋ Add Customer</button></div>
-    <div class="toolbar"><div class="search-field"><input id="customerSearch" placeholder="Search name, company, or email..." value="${escapeHTML(state.customerSearch)}"></div></div>
-    ${records.length?`<div class="entity-grid">${records.map(c=>`<article class="entity-card"><div class="task-card-head"><div><h3>${escapeHTML(c.name)}</h3><p class="task-description">${escapeHTML(c.company||"Individual customer")}</p></div><span class="pill">${escapeHTML(c.status||"active")}</span></div><div class="task-meta">${c.email?`<span class="pill">${escapeHTML(c.email)}</span>`:""}${c.phone?`<span class="pill">${escapeHTML(c.phone)}</span>`:""}</div>${c.notes?`<p class="task-description">${escapeHTML(c.notes)}</p>`:""}<div class="task-card-foot"><span class="task-date">Added ${formatDate(c.createdAt)}</span><div class="card-actions"><button class="text-button" data-action="edit-customer" data-id="${c.id}">Edit</button><button class="text-button danger" data-action="delete-customer" data-id="${c.id}">Delete</button></div></div></article>`).join("")}</div>`:emptyState("No customers found","Add a customer or adjust your search.")}</section></div>`;
+function renderEmails(){
+ const canSend=['owner','admin'].includes(state.workspaceRole);
+ return heading()+`<section class="panel"><div class="panel-head"><h3>Prepare an email</h3><span>Every message starts as a draft</span></div><form id="email-draft-form">${field('Recipient email','toEmail','','email','customer@example.com')}${field('Subject','subject','','text','Your message subject')}${textarea('Message','body','','Write your customer email here')}<button class="btn primary" type="submit">Save draft</button></form></section><section class="panel" style="margin-top:15px"><div class="panel-head"><h3>Drafts and sent history</h3><span>${state.emails.length} messages</span></div>${state.emails.map(m=>m.status==='draft'?`<details class="template-card"><summary><strong>${esc(m.subject)}</strong> <span class="pill">Draft</span> · ${esc(m.to_email)}</summary><form class="email-edit-form" data-email-id="${esc(m.id)}">${field('Recipient email','toEmail',m.to_email,'email')}${field('Subject','subject',m.subject)}${textarea('Message','body',m.body)}<button class="btn primary" type="submit">Save draft</button>${canSend?`<button class="btn ghost" type="button" data-send-email="${esc(m.id)}">Review & send</button>`:''}<button class="btn ghost" type="button" data-delete-draft="${esc(m.id)}">Delete draft</button></form></details>`:`<div class="record-row"><div class="task-main"><strong>${esc(m.subject)}</strong><small>${esc(m.to_email)} · Sent ${m.sent_at?date(m.sent_at):''}</small><small>${esc(m.body.slice(0,180))}</small></div><span class="pill green">Sent</span></div>`).join('')||empty('No emails yet','Create a draft to start a customer conversation.')}
+</section><p class="subtle" style="font-size:11px;margin-top:12px">Only workspace owners and admins can send messages. In development without Resend, sending is preview-only and does not mark a draft as sent.</p>`;
 }
-function renderDocuments() {
-  const q = state.documentSearch.toLowerCase();
-  const records = state.documents.filter(d=>`${d.title} ${d.category||""} ${d.content||""}`.toLowerCase().includes(q));
-  root.innerHTML = `<div class="page-content">${pageHeading("documents")}<section class="panel"><div class="panel-title"><div><h2>Document Library</h2><p>${state.documents.length} saved documents</p></div><button class="btn btn-primary" data-action="new-document">＋ New Document</button></div>
-    <div class="toolbar"><div class="search-field"><input id="documentSearch" placeholder="Search documents..." value="${escapeHTML(state.documentSearch)}"></div></div>
-    ${records.length?`<div class="entity-grid">${records.map(d=>`<article class="entity-card"><div class="task-card-head"><h3>▧ ${escapeHTML(d.title)}</h3><span class="pill">${escapeHTML(d.category||"General")}</span></div><p class="task-description">${escapeHTML((d.content||"").slice(0,220))}${(d.content||"").length>220?"…":""}</p><div class="task-card-foot"><span class="task-date">Updated ${formatDate(d.updatedAt||d.createdAt)}</span><div class="card-actions"><button class="text-button" data-action="edit-document" data-id="${d.id}">Open / Edit</button><button class="text-button danger" data-action="delete-document" data-id="${d.id}">Delete</button></div></div></article>`).join("")}</div>`:emptyState("No documents yet","Create a document to start building your workspace knowledge base.")}</section></div>`;
+function renderAnalytics(){
+ const a=state.analytics||{counts:{},inventory:{}};const c=a.counts||{},i=a.inventory||{};
+ const max=Math.max(c.total||0,1);const bars=[['To do',c.todo||0],['In progress',c.inProgress||0],['Completed',c.completed||0]];
+ return heading()+`<div class="grid stats-grid">${stat('TOTAL TASKS',c.total||0,'Across this workspace')}${stat('COMPLETED',c.completed||0,'Finished tasks')}${stat('CUSTOMERS',i.customers||0,'Customer records')}${stat('AUTOMATIONS',i.automations||0,'Configured workflows')}</div><div class="panel"><div class="panel-head"><h3>Task status</h3><span>Current workload</span></div>${bars.map(([label,n])=>`<div style="margin:18px 0"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:8px"><span>${label}</span><span class="muted">${n}</span></div><div style="height:8px;background:#0d0a14;border-radius:9px;overflow:hidden"><div style="height:100%;width:${Math.min(100,n/max*100)}%;background:linear-gradient(90deg,#7151bd,#b99ef1);border-radius:9px"></div></div></div>`).join('')}</div>`;
 }
-function renderAutomations() {
-  root.innerHTML = `<div class="page-content">${pageHeading("automations")}<section class="panel"><div class="panel-title"><div><h2>Workflow Builder</h2><p>Local automations that can perform approved internal actions</p></div><button class="btn btn-primary" data-action="new-automation">＋ Create Automation</button></div>
-    <div class="form-note">Enabled workflows can run manually or automatically when a task is created or completed. Scheduled schedules and external integrations are not connected yet.</div>
-    ${state.automations.length?`<div class="simple-list section-gap">${state.automations.map(a=>`<div class="simple-list-item automation-card"><span class="automation-icon">⟳</span><div class="automation-main"><h3>${escapeHTML(a.name)}</h3><p>${escapeHTML(a.description||"No description")}<br>Trigger: ${escapeHTML(a.trigger||"manual")} · Action: Create task · ${a.lastRunAt?`Last run ${timeAgo(a.lastRunAt)}`:"Never run"}</p><div class="task-meta"><span class="pill">${a.enabled?"Enabled":"Disabled"}</span><span class="pill">${escapeHTML(a.actionValue||"Task title not set")}</span></div></div><div class="card-actions"><button class="text-button" data-action="run-automation" data-id="${a.id}">Run</button><button class="text-button" data-action="toggle-automation" data-id="${a.id}">${a.enabled?"Disable":"Enable"}</button><button class="text-button" data-action="edit-automation" data-id="${a.id}">Edit</button><button class="text-button danger" data-action="delete-automation" data-id="${a.id}">Delete</button></div></div>`).join("")}</div>`:emptyState("No automations configured","Create a workflow to automate a repeatable task.")}</section></div>`;
+function renderAssistant(){
+ const bubbles=state.chat.map(m=>`<div class="chat-bubble ${m.role}">${esc(m.content)}</div>`).join('');
+ const statusText=state.aiStatus?(state.aiStatus.available?`AI Online · ${state.aiStatus.provider||'AI'} · ${state.aiStatus.model||'Model'}`:'AI Offline'):'Checking local AI…';
+ const statusClass=state.aiStatus?(state.aiStatus.available?'online':'offline'):'checking';
+ return `<style>.ai-status{font-size:11px;padding:5px 9px;border-radius:20px;background:#211a2e;color:#aaa}.ai-status.online{color:#a8e6bd;background:rgba(71,170,112,.12);border:1px solid rgba(71,170,112,.25)}.ai-status.offline{color:#f0a2a2;background:rgba(210,80,80,.1);border:1px solid rgba(210,80,80,.2)}.ai-status.checking{color:#c4b5e8}.chat-bubble.thinking{display:flex;align-items:center;gap:5px;min-width:58px;min-height:38px}.chat-bubble.thinking span{width:6px;height:6px;border-radius:50%;background:#bca5f0;animation:siloThinking 1.1s infinite ease-in-out}.chat-bubble.thinking span:nth-child(2){animation-delay:.15s}.chat-bubble.thinking span:nth-child(3){animation-delay:.3s}@keyframes siloThinking{0%,60%,100%{transform:translateY(0);opacity:.45}30%{transform:translateY(-5px);opacity:1}}.chat-compose button:disabled,.chat-compose textarea:disabled{opacity:.55;cursor:wait}</style>`+heading()+`<div class="chat-layout"><section class="panel chat-panel"><div class="panel-head"><h3>SILO Assistant</h3><span id="ai-status" class="ai-status ${statusClass}">${esc(statusText)}</span></div><div class="chat-messages" id="chat-messages">${bubbles}${state.aiThinking?'<div class="chat-bubble assistant thinking" aria-label="SILO is thinking"><span></span><span></span><span></span></div>':''}</div><form class="chat-compose" id="chat-form"><textarea name="message" placeholder="Ask about your business, tasks, or next steps..." required ${state.aiThinking?'disabled':''}></textarea><button class="btn primary" type="submit" ${state.aiThinking?'disabled':''}>${state.aiThinking?'Thinking…':'Send'}</button></form></section><aside class="panel"><div class="panel-head"><h3>What I can help with</h3></div><div class="action-line">Summarize open work and priorities</div><div class="action-line">Review customers and business records</div><div class="action-line">Brainstorm plans and procedures</div><div class="action-line">Prepare an AI Employee proposal</div><p class="subtle" style="font-size:11px;margin-top:18px">The assistant can discuss your workspace. Changes are made through SILO controls or approved AI Employee proposals.</p></aside></div>`;
 }
-function renderAnalytics() {
-  const active = state.tasks.filter(t=>!t.completed).length, done = state.tasks.length-active;
-  const priorities = ["urgent","high","normal","low"];
-  const max = Math.max(1,...priorities.map(p=>state.tasks.filter(t=>(t.priority||"normal")===p).length));
-  const days = Array.from({length:7},(_,i)=>{const d=new Date();d.setDate(d.getDate()-(6-i));return d;});
-  const daily = days.map(d=>state.tasks.filter(t=>{const created=new Date(t.createdAt);return created.toDateString()===d.toDateString();}).length);
-  const dailyMax = Math.max(1,...daily);
-  root.innerHTML = `<div class="page-content">${pageHeading("analytics")}<section class="stat-grid">${statCard("▤","TOTAL TASKS",state.tasks.length,"All saved tasks")}${statCard("✓","COMPLETED",done,"Finished tasks")}${statCard("♙","CUSTOMERS",state.customers.length,"Customer records")}${statCard("▧","DOCUMENTS",state.documents.length,"Saved documents")}</section>
-    <div class="dashboard-grid"><section class="panel"><div class="panel-title"><div><h2>Task Completion</h2><p>Current task status distribution</p></div></div><div class="metric-row"><span>Completed</span><strong>${done}</strong></div><div class="bar-track"><div class="bar-fill" style="width:${state.tasks.length?done/state.tasks.length*100:0}%"></div></div><div class="metric-row"><span>Active</span><strong>${active}</strong></div><div class="bar-track"><div class="bar-fill" style="width:${state.tasks.length?active/state.tasks.length*100:0}%"></div></div><div class="metric-row"><span>Completion rate</span><strong>${state.tasks.length?Math.round(done/state.tasks.length*100):0}%</strong></div></section>
-    <section class="panel"><div class="panel-title"><div><h2>Priority Distribution</h2><p>All tasks by assigned priority</p></div></div>${priorities.map(p=>`<div class="metric-row"><span>${p[0].toUpperCase()+p.slice(1)}</span><strong>${state.tasks.filter(t=>(t.priority||"normal")===p).length}</strong></div><div class="bar-track"><div class="bar-fill" style="width:${state.tasks.filter(t=>(t.priority||"normal")===p).length/max*100}%"></div></div>`).join("")}</section>
-    <section class="panel"><div class="panel-title"><div><h2>Task Creation</h2><p>Tasks created over the last seven days</p></div></div><div class="chart-bars">${daily.map((n,i)=>`<div class="chart-column"><i style="height:${Math.max(3,n/dailyMax*100)}%"></i><small>${days[i].toLocaleDateString(undefined,{weekday:"short"})}</small></div>`).join("")}</div></section>
-    <section class="panel"><div class="panel-title"><div><h2>Workspace Inventory</h2><p>Records currently stored locally</p></div></div>${[["Customers",state.customers.length],["Documents",state.documents.length],["Automations",state.automations.length],["Pending approvals",state.proposals.filter(p=>p.status==="pending").length]].map(([l,n])=>`<div class="metric-row"><span>${l}</span><strong>${n}</strong></div>`).join("")}</section></div></div>`;
+function renderMemory(){
+ const canEdit=['owner','admin'].includes(state.workspaceRole);
+ const cards=state.businessMemory.map(m=>canEdit?`<details class="template-card"><summary><strong>${esc(m.title)}</strong><span class="pill">${esc(titleCase(m.category))}</span></summary><form class="memory-edit-form" data-memory-id="${esc(m.id)}">${selectField('Category','category',[['goal','Goal'],['decision','Decision'],['customer','Customer'],['preference','Preference'],['lesson','Lesson'],['process','Process'],['other','Other']],m.category)}${field('Title','title',m.title)}${textarea('Memory','content',m.content)}<button class="btn primary" type="submit">Save memory</button><button class="btn ghost" type="button" data-delete-memory="${esc(m.id)}">Delete</button></form></details>`:`<article class="template-card"><strong>${esc(m.title)}</strong> <span class="pill">${esc(titleCase(m.category))}</span><p class="subtle" style="white-space:pre-wrap;font-size:12px">${esc(m.content)}</p></article>`).join('');
+ return heading()+`${canEdit?`<section class="panel"><div class="panel-head"><h3>Add to business memory</h3><span>Saved to this workspace</span></div><form id="memory-form">${selectField('Category','category',[['goal','Goal'],['decision','Decision'],['customer','Customer'],['preference','Preference'],['lesson','Lesson'],['process','Process'],['other','Other']],'other')}${field('Title','title','','text','Example: Our ideal customer')}${textarea('Memory','content','','Record a decision, goal, preference, customer context or lesson worth retaining')}<button class="btn primary" type="submit">Save memory</button></form></section>`:''}<section class="panel" style="margin-top:15px"><div class="panel-head"><h3>Company knowledge</h3><span>${state.businessMemory.length} saved entries</span></div><p class="subtle" style="font-size:11px">These entries are workspace-specific and are included in the context supplied to SILO's AI Assistant and AI Employee. Avoid storing passwords, payment card details or other secrets.</p>${cards||empty('No business memory yet','Save important company knowledge so SILO can use it in future conversations.')}</section>`;
 }
-function renderAssistant() {
-  root.innerHTML = `<div class="page-content">${pageHeading("assistant")}<section class="panel chat-panel"><div class="panel-title"><div><h2>✧ SILO Assistant</h2><p id="aiConnectionLabel">Checking local Ollama connection...</p></div><span class="pill status-completed" id="aiConnectionBadge">LOCAL AI</span></div>
-    <div class="chat-history" id="chatHistory">${state.chat.map(m=>`<div class="chat-bubble ${m.role}">${escapeHTML(m.text)}</div>`).join("")}</div>
-    <form class="chat-composer" id="chatForm"><input class="field" id="chatInput" maxlength="2000" placeholder="Ask SILO about your business or workspace..." required><button class="btn btn-primary" type="submit">Send ↑</button></form>
-    <p class="form-note">Powered by Qwen3 1.7B through Ollama. Your workspace context and conversations are processed locally on this Mac. SILO's assistant is read-only; workspace changes still require your approval.</p>
-    </section></div>`;
-  const history = document.getElementById("chatHistory");
-  history.scrollTop = history.scrollHeight;
-  api("/ai/status").then(status => {
-    const label = document.getElementById("aiConnectionLabel");
-    const badge = document.getElementById("aiConnectionBadge");
-    if (!label || !badge) return;
-    label.textContent = status.connected && status.installed
-      ? `Connected · ${status.model} · Running locally`
-      : status.message || "Local AI is unavailable.";
-    badge.textContent = status.connected && status.installed ? "AI ONLINE" : "AI OFFLINE";
-    badge.classList.toggle("status-completed", Boolean(status.connected && status.installed));
-  }).catch(() => {});
+function renderEmployee(){
+ const pending=state.proposals.filter(p=>p.status==='pending');const history=state.proposals.filter(p=>p.status!=='pending');
+ return heading()+`<div class="grid dashboard-grid"><section class="panel"><div class="panel-head"><h3>Give SILO a goal</h3><span>Human approval required</span></div><form id="employee-form">${selectField('Specialist role','role',[['executive_assistant','Executive Assistant'],['operations_coordinator','Operations Coordinator'],['customer_relations','Customer Relations Assistant'],['sales_assistant','Sales Assistant'],['marketing_coordinator','Marketing Coordinator'],['administrative_assistant','Administrative Assistant']],'executive_assistant')}<div class="field"><label for="employee-goal">What should this AI Employee work on?</label><textarea id="employee-goal" name="goal" placeholder="Example: Review my open tasks and create a prioritized plan for this week." required></textarea></div><button class="btn primary" type="submit">Generate proposal</button></form><p class="subtle" style="font-size:11px;margin-top:18px">SILO can propose creating or updating tasks, customers, documents, and automations. It cannot send messages, make purchases, or delete records.</p></section><section class="panel"><div class="panel-head"><h3>Review queue</h3><span>${pending.length} pending</span></div>${pending.map(proposalCard).join('')||empty('No pending proposals','New AI Employee plans will appear here.')}</section></div><section class="panel" style="margin-top:16px"><div class="panel-head"><h3>Proposal history</h3><span>${history.length} reviewed</span></div>${history.map(p=>`<div class="record-row"><div class="task-main"><strong>${esc(p.summary)}</strong><small>${esc(titleCase(p.role||'executive_assistant'))} · ${date(p.createdAt)} · ${p.actions.length} proposed actions</small></div><span class="pill ${p.status==='approved'?'green':'red'}">${esc(titleCase(p.status))}</span>${p.status==='approved'?`<button class="btn ghost" data-undo="${esc(p.id)}">Undo</button>`:''}</div>`).join('')||empty('No reviewed proposals')}</section>`;
 }
-function employeeActionLabel(action) {
-  const labels = {
-    create_task: "Create task", update_task: "Update task", complete_task: "Complete task",
-    create_customer: "Create customer", update_customer: "Update customer",
-    create_document: "Create document", update_document: "Update document",
-    create_automation: "Create automation", update_automation: "Update automation"
-  };
-  return labels[action.type] || "Workspace action";
+function proposalCard(p){return `<article class="proposal"><div class="eyebrow">Pending approval · ${date(p.createdAt)}</div><h3 style="font:650 14px Manrope">${esc(p.summary)}</h3><p class="subtle" style="font-size:10px">${esc(titleCase(p.role||'executive_assistant'))}</p><p class="subtle" style="font-size:12px">${esc(p.goal)}</p>${p.actions.map(a=>`<div class="action-line">${esc(titleCase(a.type))}${a.data?.title?`: ${esc(a.data.title)}`:a.data?.name?`: ${esc(a.data.name)}`:''}</div>`).join('')}<div class="proposal-actions"><button class="btn primary" data-approve="${esc(p.id)}">Approve all</button><button class="btn ghost" data-reject="${esc(p.id)}">Reject</button></div></article>`;}
+function renderSettings(){
+ const tabs=[['workspace','Workspace'],['account','Account'],['system','System & data']];
+ let content='';
+ if(state.settingsTab==='workspace') content=`<form id="workspace-form" class="panel"><div class="panel-head"><h3>Workspace profile</h3></div>${field('Workspace name','workspaceName',state.settings.workspaceName||'My Workspace')}${field('Industry','industry',state.settings.industry||'')}${textarea('Description','description',state.settings.description||'')}<button class="btn primary" type="submit">Save workspace</button></form>${['owner','admin'].includes(state.workspaceRole)?`<section class="panel" style="margin-top:15px"><div class="panel-head"><h3>Team members</h3></div><div id="team-members-list" class="subtle">Loading team…</div><form id="team-invite-form" style="margin-top:15px"><div class="field-grid">${field('Invite by email','email','','email','colleague@company.com')}${selectField('Workspace role','role',[['member','Member'],['admin','Admin']],'member')}</div><button class="btn primary" type="submit">Send invitation</button></form><div id="team-invitations-list" style="margin-top:15px"></div>${state.workspaceRole==='owner'?`<form id="transfer-ownership-form" style="margin-top:18px"><h4>Transfer workspace ownership</h4><div id="transfer-owner-select"></div>${field('Current password','password','','password')}${field('Authenticator or recovery code (if MFA is enabled)','mfaCode','','text')}<button class="btn ghost" type="submit">Transfer ownership</button></form>`:''}<p class="subtle" style="font-size:11px;margin-top:10px">Invitations expire after seven days. Seat limits depend on your plan.</p></section>`:''}`;
+ if(state.settingsTab==='account') content=`<form id="account-form" class="panel"><div class="panel-head"><h3>Account details</h3></div>${field('Display name','displayName',state.user?.displayName||'')}${field('Current password (required to change password)','currentPassword','','password')}${field('New password (leave blank to keep current)','newPassword','','password')}${field('Authenticator or recovery code (required for password changes when MFA is enabled)','mfaCode','','text')}<button class="btn primary" type="submit">Update account</button></form><form id="email-change-form" class="panel" style="margin-top:15px"><h3 style="font:650 14px Manrope">Change email address</h3>${field('New email address','newEmail','','email')}${field('Current password','currentPassword','','password')}${field('Authenticator or recovery code (if MFA is enabled)','mfaCode','','text')}<button class="btn primary" type="submit">Send confirmation email</button></form><section class="panel" style="margin-top:15px"><h3 style="font:650 14px Manrope">Multi-factor authentication</h3><p class="subtle" id="mfa-status-text">Checking MFA status…</p><form id="mfa-setup-form">${field('Current password','currentPassword','','password')}${field('Current authenticator or recovery code (if MFA is already enabled)','mfaCode','','text')}<button class="btn primary" type="submit">Set up authenticator app</button></form><div id="mfa-setup-result"></div><form id="mfa-disable-form" style="margin-top:12px">${field('Password to disable MFA','currentPassword','','password')}${field('Authenticator or recovery code','code','','text')}<button class="btn ghost" type="submit">Disable MFA</button></form><form id="mfa-recovery-form" style="margin-top:12px">${field('Password to regenerate recovery codes','currentPassword','','password')}${field('Authenticator or recovery code','code','','text')}<button class="btn ghost" type="submit">Regenerate recovery codes</button></form></section><section class="panel" style="margin-top:15px"><h3 style="font:650 14px Manrope">Notifications</h3><p class="subtle" id="notification-preference-status">Loading preferences…</p><form id="notification-preferences-form"><label class="check-row"><input type="checkbox" name="calendarReminders" checked> Email me calendar reminders</label><button class="btn primary" type="submit">Save preferences</button></form></section><section class="panel" style="margin-top:15px"><h3 style="font:650 14px Manrope">Delete account</h3><p class="subtle">This permanently deletes your account. You must transfer shared workspace ownership and cancel active subscriptions first.</p><form id="delete-account-form">${field('Current password','password','','password')}${field('Authenticator or recovery code (if MFA is enabled)','mfaCode','','text')}<button class="btn ghost" type="submit">Permanently delete account</button></form></section><div class="panel" style="margin-top:15px"><h3 style="font:650 14px Manrope">Subscription</h3><p class="subtle" id="billing-status-text">Current plan: ${esc(state.billing?.plan||'free')} · ${esc(state.billing?.status||'inactive')}</p><p class="subtle" style="font-size:11px">${state.billing?.configured?'Paid plans are available through secure Stripe checkout.':'Stripe checkout is not configured by the SILO operator yet.'}</p>${state.workspaceRole==='owner'&&state.billing?.configured?`<button class="btn primary" data-action="billing-checkout-starter">Choose Starter</button><button class="btn primary" data-action="billing-checkout-pro">Choose Pro</button><button class="btn ghost" data-action="billing-portal">Manage subscription</button>`:''}</div>`;
+ if(state.settingsTab==='system') content=`<div class="panel"><div class="panel-head"><h3>System diagnostics</h3>${btn('Refresh diagnostics','diagnostics')}</div><pre id="diagnostics-output" class="subtle" style="white-space:pre-wrap;font-size:11px">Select refresh diagnostics to inspect your system.</pre><div class="heading-actions" style="margin-top:18px">${btn('Export backup','backup-export')}${btn('Restore backup','backup-restore')}${btn('AI usage','ai-usage')}${btn('AI activity','ai-history')}${btn('Support tickets','support-tickets')}</div><pre id="ai-report-output" class="subtle" style="white-space:pre-wrap;font-size:11px;margin-top:12px"></pre></div><div class="panel" style="margin-top:15px"><h3 style="font:650 14px Manrope">AI spending limit</h3><p class="subtle" id="ai-budget-status">Loading budget settings…</p><form id="ai-budget-form">${field('Monthly AI budget in USD (0 disables alerts)','monthlyBudgetUsd','0','number')}<button class="btn primary" type="submit">Save AI budget</button></form></div><div class="panel" style="margin-top:15px"><h3 style="font:650 14px Manrope">Industry starter packs</h3><p class="subtle">Add practical starter tasks and documents for your industry.</p><div class="field-grid"><select id="starter-pack-select" class="input"><option value="general">General business</option><option value="hospitality">Hospitality</option><option value="retail">Retail</option><option value="professional_services">Professional services</option><option value="technology">Technology</option><option value="healthcare_admin">Healthcare administration</option><option value="education">Education</option></select><button class="btn primary" data-action="starter-pack">Apply starter pack</button></div></div><div class="panel" style="margin-top:15px"><h3 style="font:650 14px Manrope">CSV data tools</h3><p class="subtle">Import or export tasks, customers, and documents. Imports are validated and rolled back if any row is invalid.</p><div class="heading-actions">${btn('Export tasks','csv-export-tasks')}${btn('Export customers','csv-export-customers')}${btn('Export documents','csv-export-documents')}${btn('Import CSV','csv-import')}</div></div><div class="panel" style="margin-top:15px"><h3 style="font:650 14px Manrope">Contact SILO support</h3><p class="subtle">Send a support request tied to this workspace.</p><form id="support-ticket-form">${field('Subject','subject','','text','How can we help?')}${textarea('Message','message','','Describe the issue or question')}<button class="btn primary" type="submit">Submit support request</button></form><div id="support-ticket-list" style="margin-top:15px"></div></div>`;
+ return heading()+`<div class="settings-layout"><nav class="settings-tabs">${tabs.map(([id,label])=>`<button class="${state.settingsTab===id?'active':''}" data-settings-tab="${id}">${label}</button>`).join('')}</nav><div class="settings-content">${content}</div></div>`;
 }
-function employeeActionDetail(action) {
-  const d = action.data || {};
-  const collection = action.type.includes("task") ? "tasks" : action.type.includes("customer") ? "customers" : action.type.includes("document") ? "documents" : "automations";
-  const existing = d.id ? findById(collection, d.id) : null;
-  const target = d.title || d.name || existing?.title || existing?.name || (d.id ? "Existing record" : "New record");
-  const details = action.type === "complete_task" ? `Mark “${target}” as completed`
-    : action.type.startsWith("create_") ? `Add “${target}”`
-    : `Change “${target}”`;
-  return `${details}${action.reason ? ` — ${action.reason}` : ""}`;
+function openModal(title,body,submitLabel='Save'){
+ const root=document.getElementById('modal-root');root.innerHTML=`<div class="modal-backdrop" data-close-modal><section class="modal" role="dialog" aria-modal="true"><div class="modal-head"><h2>${title}</h2><button class="icon-btn" data-action="close-modal">✕</button></div><form id="record-form" class="modal-form">${body}<div class="modal-actions"><button type="button" class="btn ghost" data-action="close-modal">Cancel</button><button class="btn primary" type="submit">${submitLabel}</button></div></form></section></div>`;
 }
-function renderEmployee() {
-  const pending = state.proposals.filter(p=>p.status==="pending");
-  const reviewed = state.proposals.filter(p=>p.status!=="pending").slice(0,8);
-  const actionCount = pending.reduce((sum,p)=>sum+(Array.isArray(p.actions)?p.actions.length:1),0);
-  root.innerHTML = `<div class="page-content">${pageHeading("employee")}<section class="panel"><div class="panel-title"><div><h2>AI Employee Control Center</h2><p>Describe the work. SILO will plan it, show every proposed change, and wait for your approval.</p></div><span class="pill priority-high">HUMAN APPROVAL</span></div>
-    <div class="dashboard-grid"><div><h2>Give SILO a job</h2><p class="form-note">The AI Employee can prepare multi-step changes to tasks, customers, documents, and automations. Nothing changes until you approve the complete plan.</p>
-      <form id="employeePlanForm" class="section-gap"><div class="form-field"><label for="employeeRequest">What would you like SILO to do?</label><textarea class="field" id="employeeRequest" maxlength="2000" rows="5" placeholder="Example: Review my active tasks, mark finished work complete, and create follow-up tasks for anything urgent." required></textarea></div><div class="form-actions"><button class="btn btn-primary" type="submit">✧ Prepare Work Plan</button></div></form>
-      <p class="form-note">SILO can create and update internal records. Deletions, external messages, purchases, payments, and other external actions are not available to the AI Employee.</p>
-    </div><div><h2>Employee Safety</h2><div class="metric-row"><span>Workspace changes</span><strong>Approval required</strong></div><div class="metric-row"><span>Multi-step plans</span><strong>Up to 8 actions</strong></div><div class="metric-row"><span>External actions</span><strong>Disabled</strong></div><div class="metric-row"><span>Pending plans</span><strong>${pending.length}</strong></div><div class="metric-row"><span>Actions awaiting review</span><strong>${actionCount}</strong></div></div></div></section>
-    <section class="panel section-gap"><div class="panel-title"><div><h2>Approval Queue</h2><p>Review the full plan before allowing SILO to make changes.</p></div><span class="pill">${pending.length} PENDING</span></div>
-      ${pending.length?pending.map(p=>`<div class="approval-card"><div class="task-card-head"><strong>${escapeHTML(p.title)}</strong><span class="pill priority-${escapeHTML(p.priority||"normal")}">${Array.isArray(p.actions)?`${p.actions.length} ACTION${p.actions.length===1?"":"S"}`:escapeHTML(p.priority||"normal")}</span></div><p>${escapeHTML(p.description||"No additional details")}</p>${Array.isArray(p.actions)?`<div class="section-gap">${p.actions.map((a,i)=>`<div class="metric-row"><span><strong>${i+1}. ${escapeHTML(employeeActionLabel(a))}</strong><br><small>${escapeHTML(employeeActionDetail(a))}</small></span></div>`).join("")}</div>`:`<p>${escapeHTML(p.description||"")}</p>`}<small class="muted">Prepared ${timeAgo(p.createdAt)} · No changes have been made yet</small><div class="approval-actions"><button class="btn btn-primary btn-small" data-action="approve-proposal" data-id="${p.id}">Approve & Execute Plan</button><button class="btn btn-small btn-danger" data-action="reject-proposal" data-id="${p.id}">Reject</button></div></div>`).join(""):emptyState("No pending plans","Give SILO a job to prepare your first AI Employee work plan.")}</section>
-    ${reviewed.length?`<section class="panel section-gap"><div class="panel-title"><div><h2>Recently Reviewed</h2><p>Previously approved or rejected plans.</p></div></div>${reviewed.map(p=>`<div class="metric-row"><span>${escapeHTML(p.title)}<br><small>${Array.isArray(p.executionResults)?`${p.executionResults.length} action(s) executed`:p.executionError?escapeHTML(p.executionError):""}</small></span><span class="pill ${p.status==="approved"?"status-completed":""}">${escapeHTML(p.status)}</span>${Array.isArray(p.executionResults)?`<button class="text-button" data-action="view-proposal-results" data-id="${p.id}">View report</button>`:""}</div>`).join("")}</section>`:""}</div>`;
+function openRecordForm(collection,record=null){
+ const configs={
+ tasks:{title:record?'Edit task':'New task',fields:field('Title','title',record?.title||'')+textarea('Description','description',record?.description||'')+`<div class="field-grid">${selectField('Priority','priority',[['low','Low'],['medium','Medium'],['high','High']],record?.priority||'medium')}${selectField('Status','status',[['todo','To do'],['in_progress','In progress'],['completed','Completed']],record?.status||'todo')}${field('Due date','dueDate',record?.dueDate||'','date')}</div>`},
+ customers:{title:record?'Edit customer':'New customer',fields:field('Name','name',record?.name||'')+`<div class="field-grid">${field('Email','email',record?.email||'','email')}${field('Company','company',record?.company||'')}</div>${field('Phone','phone',record?.phone||'')}${selectField('Status','status',[['lead','Lead'],['active','Active'],['inactive','Inactive']],record?.status||'lead')+textarea('Notes','notes',record?.notes||'')}`},
+ documents:{title:record?'Edit document':'New document',fields:field('Title','title',record?.title||'')+field('Category','category',record?.category||'General')+textarea('Content','content',record?.content||'')},
+ automations:{title:record?'Edit automation':'New automation',fields:field('Name','name',record?.name||'')+selectField('Trigger','trigger',[['manual','Manual'],['task_created','When a task is created'],['task_completed','When a task is completed']],record?.trigger||'manual')+selectField('Action','action',[['create_task','Create a task']],record?.action||'create_task')+field('New task title','actionTitle',record?.actionConfig?.title||'')+selectField('Task priority','actionPriority',[['low','Low'],['medium','Medium'],['high','High']],record?.actionConfig?.priority||'medium')+selectField('Enabled','enabled',[[true,'Enabled'],[false,'Disabled']],record?.enabled===false?false:true)}
+ };
+ const config=configs[collection];if(!config)return;
+ openModal(config.title,config.fields,record?'Save changes':'Create');
+ document.getElementById('record-form').dataset.collection=collection;
+ document.getElementById('record-form').dataset.id=record?.id||'';
 }
-
-function renderSettings() {
-  const s = state.settings;
-  const tabs = [["workspace","Workspace"],["preferences","Preferences"],["system","System & Data"]];
-  root.innerHTML = `<div class="page-content">${pageHeading("settings")}<div class="settings-layout"><section class="panel settings-nav">${tabs.map(([id,label])=>`<button class="${state.settingsTab===id?"active":""}" data-action="settings-tab" data-value="${id}">${label}</button>`).join("")}</section><section class="panel">
-    ${state.settingsTab==="workspace"?`<div class="panel-title"><div><h2>Workspace Identity</h2><p>These details personalize your SILO workspace.</p></div></div><form id="settingsForm"><div class="form-grid"><div class="form-field"><label for="settingWorkspace">Workspace name</label><input class="field" id="settingWorkspace" maxlength="100" value="${escapeHTML(s.workspaceName||"")} " required></div><div class="form-field"><label for="settingOwner">Owner / display name</label><input class="field" id="settingOwner" maxlength="100" value="${escapeHTML(s.ownerName||"")}"></div><div class="form-field"><label for="settingIndustry">Industry</label><input class="field" id="settingIndustry" maxlength="100" value="${escapeHTML(s.industry||"")}" placeholder="e.g. Hospitality, Retail, Consulting"></div><div class="form-field"><label for="settingTimezone">Timezone</label><input class="field" id="settingTimezone" maxlength="100" value="${escapeHTML(s.timezone||"")}"></div><div class="form-field full"><label for="settingDescription">Business description</label><textarea class="field" id="settingDescription" maxlength="1000">${escapeHTML(s.description||"")}</textarea></div></div><div class="form-actions"><button class="btn btn-primary" type="submit">Save Workspace</button></div></form>`:
-    state.settingsTab==="preferences"?`<div class="panel-title"><div><h2>Preferences</h2><p>Control local workspace behavior.</p></div></div><div class="setting-row"><div><strong>Activity notifications</strong><small>Show in-app feedback for workspace activity.</small></div><input class="switch" type="checkbox" id="settingNotifications" ${s.notifications!==false?"checked":""}></div><div class="setting-row"><div><strong>Compact interface</strong><small>Reserved preference for a denser workspace layout.</small></div><input class="switch" type="checkbox" id="settingCompact" ${s.compactMode?"checked":""}></div><p class="form-note">Preferences are stored locally in your SILO data folder.</p>`:
-    `<div class="panel-title"><div><h2>System & Data</h2><p>Information about this local installation.</p></div></div><div class="setting-row"><div><strong>Application version</strong><small>SILO Intelligent Business Management</small></div><strong>1.2</strong></div><div class="setting-row"><div><strong>Storage mode</strong><small>Local JSON files in server/data</small></div><strong>Local</strong></div><div class="setting-row"><div><strong>AI connection</strong><small>Local model served by Ollama on this Mac.</small></div><strong>Qwen3 1.7B</strong></div><div class="setting-row"><div><strong>Authentication</strong><small>This local preview does not have user accounts.</small></div><strong>Not enabled</strong></div><div class="section-gap"><h3>Workspace Backups</h3><p class="form-note">Export a complete copy of your tasks, customers, documents, automations, activity, approvals, and settings. Store backup files somewhere separate from this Mac.</p><div class="form-actions"><a class="btn btn-primary" href="/api/backup/export">↓ Export Full Backup</a><label class="btn" for="restoreBackupFile">Restore Backup</label><input id="restoreBackupFile" type="file" accept="application/json,.json" hidden></div></div><div class="section-gap"><h3>System Diagnostics</h3><p class="form-note">Check local storage health, application version, and Ollama connectivity.</p><button class="btn" type="button" data-action="system-diagnostics">Run Diagnostics</button></div><div class="form-note section-gap">SILO is still a local-first preview. Before public deployment, it needs user authentication, authorization, database migrations, encrypted backup strategy, rate limiting, and a production security review. The local server now binds to this Mac only by default; do not expose it directly to the internet.</div>`}
-  </section></div></div>`;
+async function loadInitial(){
+ try{
+  await request('/health');
+  const csrf=await request('/auth/csrf');state.csrf=csrf.csrfToken;
+  const resetToken=new URLSearchParams(location.search).get('reset');
+  if(resetToken){renderAuth('reset');return;}
+  const verifyToken=new URLSearchParams(location.search).get('verify');
+  if(verifyToken){try{await request('/auth/verify',{method:'POST',body:JSON.stringify({token:verifyToken})});toast('Email verified. You can now sign in.');}catch(e){toast(e.message,true);}history.replaceState({},'',location.pathname);}
+  const auth=await request('/auth/status');state.setupRequired=auth.setupRequired;
+  if(!auth.authenticated){const requestedMode=new URLSearchParams(location.search).get('register')==='1'?'register':'login';renderAuth(requestedMode,auth.setupRequired);return;}
+  await acceptPendingInvite();
+  const account=await request('/account');state.user={id:account.user.id,email:account.user.email,displayName:account.user.display_name};state.workspaceRole=account.workspace.role;state.activeWorkspaceId=account.workspace.workspaceId;state.workspaces=await request('/workspaces');
+  await refresh();shell();
+ }catch(e){appRoot.innerHTML=`<div class="auth-form-wrap"><div class="auth-card"><h2>SILO could not connect</h2><p class="subtle">${esc(e.message)}</p><button class="btn primary" data-action="reload">Try again</button></div></div>`;}
 }
-function openModal(title, subtitle, body) {
-  modalRoot.innerHTML = `<div class="modal-backdrop" data-action="backdrop-close"><section class="modal" role="dialog" aria-modal="true" aria-label="${escapeHTML(title)}"><div class="modal-header"><div><h2>${escapeHTML(title)}</h2><p>${escapeHTML(subtitle||"")}</p></div><button class="modal-close" data-action="close-modal" aria-label="Close">×</button></div>${body}</section></div>`;
-  modalRoot.querySelector(".modal-backdrop").addEventListener("click", e=>{if(e.target===e.currentTarget)closeModal();});
+async function authSubmit(form){
+ const mode=form.dataset.mode;const data=Object.fromEntries(new FormData(form).entries());
+ try{
+  const result=await request(`/auth/${mode}`,{method:'POST',body:JSON.stringify(data)});
+  if(mode==='register'&&result.verificationRequired){state.pendingEmail=result.email;renderAuth('pending');if(result.emailSent)toast('Verification email sent. Check your inbox.');else if(result.developmentLink)toast('Verification link created. Check the SILO server terminal.');else toast('Email delivery is not configured yet. Set up Resend, then resend the confirmation.');return;}
+  if(result.mfaRequired){state.csrf=result.csrfToken;renderAuth('mfa');return;}
+  state.csrf=result.csrfToken;state.user=result.user;await acceptPendingInvite();const acct=await request('/account');state.workspaceRole=acct.workspace.role;state.activeWorkspaceId=acct.workspace.workspaceId;state.workspaces=await request('/workspaces');await refresh();state.page='dashboard';shell();toast('Welcome back.');
+ }catch(e){toast(e.message,true);}
 }
-function closeModal(){modalRoot.replaceChildren();}
-function formField(label,id,value="",type="text",full=false,placeholder="") {
-  return `<div class="form-field ${full?"full":""}"><label for="${id}">${label}</label>${type==="textarea"?`<textarea class="field" id="${id}" placeholder="${escapeHTML(placeholder)}" maxlength="20000">${escapeHTML(value)}</textarea>`:`<input class="field" id="${id}" type="${type}" id="${id}" value="${escapeHTML(value)}" placeholder="${escapeHTML(placeholder)}" ${type==="date"?"":""}>`}</div>`;
+async function saveRecordForm(form){
+ const collection=form.dataset.collection,id=form.dataset.id;
+ const data=Object.fromEntries(new FormData(form).entries());
+ if(collection==='automations'){data.enabled=data.enabled==='true';data.actionConfig={title:data.actionTitle,priority:data.actionPriority};delete data.actionTitle;delete data.actionPriority;}
+ try{await request(`/${collection}${id?'/'+encodeURIComponent(id):''}`,{method:id?'PATCH':'POST',body:JSON.stringify(data)});closeModal();await refresh();renderPage();toast('Saved successfully.');}
+ catch(e){toast(e.message,true);}
 }
-function openTaskModal(task=null) {
-  const t=task||{};
-  openModal(task?"Edit Task":"Create a Task", "Keep the details and priority of this work up to date.", `<form id="taskModalForm"><div class="form-grid">
-    ${formField("Task title","modalTaskTitle",t.title||"","text",true,"What needs to get done?")}
-    ${formField("Description","modalTaskDescription",t.description||"","textarea",true,"Add useful context...")}
-    <div class="form-field"><label for="modalTaskPriority">Priority</label><select class="field" id="modalTaskPriority">${["low","normal","high","urgent"].map(p=>`<option value="${p}" ${(t.priority||"normal")===p?"selected":""}>${p[0].toUpperCase()+p.slice(1)}</option>`).join("")}</select></div>
-    <div class="form-field"><label for="modalTaskDue">Due date</label><input class="field" id="modalTaskDue" type="date" value="${escapeHTML(t.dueDate||"")}"></div>
-    </div><div class="form-actions"><button type="button" class="btn" data-action="close-modal">Cancel</button><button class="btn btn-primary" type="submit">${task?"Save Changes":"Create Task"}</button></div></form>`);
-  document.getElementById("taskModalForm").addEventListener("submit", async e=>{
-    e.preventDefault(); const button=e.submitter; setBusy(button,true);
-    try {
-      const payload={title:document.getElementById("modalTaskTitle").value,description:document.getElementById("modalTaskDescription").value,priority:document.getElementById("modalTaskPriority").value,dueDate:document.getElementById("modalTaskDue").value};
-      await api(task?`/tasks/${task.id}`:"/tasks",{method:task?"PATCH":"POST",body:JSON.stringify(payload)});
-      closeModal(); await refreshData(); renderPage(); toast(task?"Task updated.":"Task created.");
-    } catch(err){toast(err.message,"error");setBusy(button,false);}
-  });
+function closeModal(){document.getElementById('modal-root').innerHTML='';}
+async function act(action,el){
+ try{
+  if(action==='reload'){location.reload();return;}
+  if(action==='create-workspace'){const name=prompt('Name your new workspace:');if(!name?.trim())return;const d=await request('/workspaces',{method:'POST',body:JSON.stringify({name:name.trim()})});const account=await request('/account');state.workspaceRole=account.workspace.role;state.activeWorkspaceId=account.workspace.workspaceId;state.workspaces=await request('/workspaces');await refresh();state.page='dashboard';shell();toast('Workspace created.');}
+  if(action==='logout'){await request('/auth/logout',{method:'POST',body:'{}'});state.authenticated=false;location.reload();}
+  if(action==='new-task')openRecordForm('tasks');
+  if(action==='new-customer')openRecordForm('customers');
+  if(action==='new-document')openRecordForm('documents');
+  if(action==='new-automation')openRecordForm('automations');
+  if(action==='close-modal')closeModal();
+  if(action==='diagnostics'){const d=await request('/system/diagnostics');const pre=document.getElementById('diagnostics-output');if(pre)pre.textContent=JSON.stringify(d,null,2);}
+  if(action==='ai-usage'||action==='ai-history'||action==='support-tickets'){const route=action==='ai-usage'?'/ai/usage':action==='ai-history'?'/ai/history':'/support/tickets';const d=await request(route);const pre=document.getElementById('ai-report-output');if(pre)pre.textContent=JSON.stringify(d,null,2);}
+  if(action==='backup-export'){const r=await fetch(API+'/backup/export');if(!r.ok)throw new Error('Backup export failed.');const blob=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='silo-backup.json';a.click();URL.revokeObjectURL(a.href);toast('Backup exported.');}
+  if(action==='backup-restore'){const input=document.createElement('input');input.type='file';input.accept='application/json';input.onchange=async()=>{const file=input.files[0];if(!file)return;try{const payload=JSON.parse(await file.text());await request('/backup/restore',{method:'POST',body:JSON.stringify(payload)});await refresh();renderPage();toast('Backup restored.');}catch(e){toast(e.message,true);}};input.click();}
+  if(action==='billing'){const d=await request('/billing/status');state.billing=d;renderPage();toast(`Plan: ${d.plan} · Billing ${d.configured?'configured':'not configured'}`);}
+  if(action==='billing-portal'){const d=await request('/billing/portal',{method:'POST',body:'{}'});if(d.url)location.assign(d.url);}
+  if(action==='billing-checkout-starter'||action==='billing-checkout-pro'){const plan=action.endsWith('pro')?'pro':'starter';const d=await request('/billing/checkout',{method:'POST',body:JSON.stringify({plan})});if(d.url)location.assign(d.url);}
+  if(action==='starter-pack'){const pack=document.getElementById('starter-pack-select')?.value||'general';if(!confirm(`Add the ${pack.replace(/_/g,' ')} starter pack to this workspace?`))return;const r=await request(`/starter-packs/${pack}/apply`,{method:'POST',body:'{}'});await refresh();renderPage();toast(`Added ${r.created} starter records.`);}
+  if(action.startsWith('csv-export-')){const c=action.replace('csv-export-','');const r=await fetch(`${API}/export/${c}.csv`,{credentials:'same-origin'});if(!r.ok)throw new Error('CSV export failed.');const blob=await r.blob(),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`silo-${c}.csv`;a.click();URL.revokeObjectURL(a.href);toast(`${c} exported.`);}
+  if(action==='csv-import'){const c=prompt('Which collection? Enter tasks, customers, or documents.');if(!['tasks','customers','documents'].includes(c))return;const input=document.createElement('input');input.type='file';input.accept='.csv,text/csv';input.onchange=async()=>{const file=input.files[0];if(!file)return;try{const result=await request(`/import/${c}.csv`,{method:'POST',body:JSON.stringify({csv:await file.text()})});await refresh();renderPage();toast(`Imported ${result.imported} ${c}.`);}catch(err){toast(err.message,true);}};input.click();}
+ }catch(e){toast(e.message,true);}
 }
-function openCustomerModal(customer=null) {
-  const c=customer||{};
-  openModal(customer?"Edit Customer":"Add Customer","Save contact details and relationship notes.",`<form id="customerForm"><div class="form-grid">
-    ${formField("Customer name","customerName",c.name||"","text",true,"Full name or contact name")}
-    ${formField("Company","customerCompany",c.company||"")}
-    ${formField("Email","customerEmail",c.email||"","email")}
-    ${formField("Phone","customerPhone",c.phone||"","tel")}
-    <div class="form-field"><label for="customerStatus">Status</label><select class="field" id="customerStatus">${["active","prospect","inactive"].map(s=>`<option ${((c.status||"active")===s)?"selected":""}>${s}</option>`).join("")}</select></div>
-    ${formField("Notes","customerNotes",c.notes||"","textarea",true,"Interaction history, preferences, or useful context...")}
-    </div><div class="form-actions"><button type="button" class="btn" data-action="close-modal">Cancel</button><button class="btn btn-primary" type="submit">Save Customer</button></div></form>`);
-  document.getElementById("customerForm").addEventListener("submit",async e=>{
-    e.preventDefault();const button=e.submitter;setBusy(button,true);
-    try{const payload={name:document.getElementById("customerName").value,company:document.getElementById("customerCompany").value,email:document.getElementById("customerEmail").value,phone:document.getElementById("customerPhone").value,status:document.getElementById("customerStatus").value,notes:document.getElementById("customerNotes").value};
-      await api(customer?`/customers/${customer.id}`:"/customers",{method:customer?"PATCH":"POST",body:JSON.stringify(payload)});
-      closeModal();await refreshData();renderPage();toast(customer?"Customer updated.":"Customer added.");
-    }catch(err){toast(err.message,"error");setBusy(button,false);}
-  });
-}
-function openDocumentModal(doc=null) {
-  const d=doc||{};
-  openModal(doc?"Edit Document":"Create Document","Write and save useful information in your workspace.",`<form id="documentForm"><div class="form-grid">
-    ${formField("Document title","documentTitle",d.title||"","text",true,"Document title")}
-    ${formField("Category","documentCategory",d.category||"General")}
-    ${formField("Content","documentContent",d.content||"","textarea",true,"Start writing...")}
-    </div><div class="form-actions"><button type="button" class="btn" data-action="close-modal">Cancel</button><button class="btn btn-primary" type="submit">Save Document</button></div></form>`);
-  document.getElementById("documentForm").addEventListener("submit",async e=>{
-    e.preventDefault();const button=e.submitter;setBusy(button,true);
-    try{const payload={title:document.getElementById("documentTitle").value,category:document.getElementById("documentCategory").value,content:document.getElementById("documentContent").value};
-      await api(doc?`/documents/${doc.id}`:"/documents",{method:doc?"PATCH":"POST",body:JSON.stringify(payload)});
-      closeModal();await refreshData();renderPage();toast(doc?"Document updated.":"Document saved.");
-    }catch(err){toast(err.message,"error");setBusy(button,false);}
-  });
-}
-function openAutomationModal(automation=null) {
-  const a=automation||{};
-  openModal(automation?"Edit Automation":"Create Automation","Configure a local workflow that can create a task manually or in response to a task event.",`<form id="automationForm"><div class="form-grid">
-    ${formField("Automation name","automationName",a.name||"","text",true,"e.g. Create weekly follow-up task")}
-    ${formField("Description","automationDescription",a.description||"","textarea",true,"What is this workflow for?")}
-    <div class="form-field"><label for="automationTrigger">Trigger</label><select class="field" id="automationTrigger">${[["manual","Manual run"],["task_created","When a task is created"],["task_completed","When a task is completed"]].map(([v,l])=>`<option value="${v}" ${(a.trigger||"manual")===v?"selected":""}>${l}</option>`).join("")}</select></div>
-    <div class="form-field"><label for="automationAction">Action</label><select class="field" id="automationAction"><option value="create_task">Create a task</option></select></div>
-    ${formField("New task title","automationValue",a.actionValue||"","text",true,"Title for the task this workflow creates")}
-    </div><div class="form-actions"><button type="button" class="btn" data-action="close-modal">Cancel</button><button class="btn btn-primary" type="submit">Save Automation</button></div><p class="form-note">Manual runs and task-created / task-completed triggers are active. Scheduled time-based workflows and external integrations are not available yet.</p></form>`);
-  document.getElementById("automationForm").addEventListener("submit",async e=>{
-    e.preventDefault();const button=e.submitter;setBusy(button,true);
-    try{const payload={name:document.getElementById("automationName").value,description:document.getElementById("automationDescription").value,trigger:document.getElementById("automationTrigger").value,action:document.getElementById("automationAction").value,actionValue:document.getElementById("automationValue").value};
-      await api(automation?`/automations/${automation.id}`:"/automations",{method:automation?"PATCH":"POST",body:JSON.stringify(payload)});
-      closeModal();await refreshData();renderPage();toast(automation?"Automation updated.":"Automation created.");
-    }catch(err){toast(err.message,"error");setBusy(button,false);}
-  });
-}
-function findById(collection,id){return state[collection].find(item=>item.id===id);}
-async function removeRecord(collection,id,label) {
-  if(!confirm(`Delete this ${label}? This cannot be undone.`))return;
-  try{await api(`/${collection}/${id}`,{method:"DELETE"});await refreshData();renderPage();toast(`${label[0].toUpperCase()+label.slice(1)} deleted.`);}
-  catch(err){toast(err.message,"error");}
-}
-async function sendChat(message) {
-  const previousHistory = state.chat
-    .filter(item => item.role === "user" || item.role === "assistant")
-    .slice(-8)
-    .map(item => ({ role: item.role, content: item.text }))
-    .filter(item => item.content && item.content !== "Thinking...");
-  state.chat.push({role:"user",text:message});
-  state.chat.push({role:"assistant",text:"Thinking..."});
-  renderAssistant();
-  try {
-    const result = await api("/assistant", {
-      method: "POST",
-      body: JSON.stringify({ message, history: previousHistory })
-    });
-    state.chat[state.chat.length-1].text = result.response;
-  } catch(err) {
-    state.chat[state.chat.length-1].text = `I couldn't reach the local AI: ${err.message}`;
-  }
-  renderAssistant();
-}
-async function handleAction(button) {
-  const action=button.dataset.action,id=button.dataset.id;
-  try {
-    if(action==="navigate")return showPage(button.dataset.page);
-    if(action==="new-task")return openTaskModal();
-    if(action==="new-customer")return openCustomerModal();
-    if(action==="new-document")return openDocumentModal();
-    if(action==="new-automation")return openAutomationModal();
-    if(action==="close-modal")return closeModal();
-    if(action==="edit-task")return openTaskModal(findById("tasks",id));
-    if(action==="edit-customer")return openCustomerModal(findById("customers",id));
-    if(action==="edit-document")return openDocumentModal(findById("documents",id));
-    if(action==="edit-automation")return openAutomationModal(findById("automations",id));
-    if(action==="delete-task")return removeRecord("tasks",id,"task");
-    if(action==="delete-customer")return removeRecord("customers",id,"customer");
-    if(action==="delete-document")return removeRecord("documents",id,"document");
-    if(action==="delete-automation")return removeRecord("automations",id,"automation");
-    if(action==="toggle-task") {
-      await api(`/tasks/${id}`,{method:"PATCH",body:JSON.stringify({completed:button.dataset.completed==="true"})});
-      await refreshData();renderPage();toast("Task status updated.");return;
-    }
-    if(action==="task-filter"){state.taskFilter=button.dataset.value;renderTasks();return;}
-    if(action==="run-automation"){
-      const result=await api(`/automations/${id}/run`,{method:"POST",body:"{}"});
-      await refreshData();renderPage();toast(`Automation ran. Created: ${result.task.title}`);return;
-    }
-    if(action==="toggle-automation"){
-      const a=findById("automations",id);await api(`/automations/${id}`,{method:"PATCH",body:JSON.stringify({enabled:!a.enabled})});
-      await refreshData();renderPage();toast(`Automation ${a.enabled?"disabled":"enabled"}.`);return;
-    }
-    if(action==="settings-tab"){state.settingsTab=button.dataset.value;renderSettings();return;}
-    if(action==="view-proposal-results"){
-      const proposal=findById("proposals",id);
-      if(!proposal)return;
-      const rows=(proposal.executionResults||[]).map((item,index)=>`<div class="metric-row"><span><strong>${index+1}. ${escapeHTML(item.type.replaceAll("_"," "))}</strong><br><small>${escapeHTML(item.label||item.taskTitle||item.automationName||item.id||"Completed")}</small></span><span class="pill status-completed">Success</span></div>`).join("");
-      openModal("Execution Report",`Completed ${formatDate(proposal.reviewedAt)} · ${proposal.executionResults?.length||0} action(s)`,rows||emptyState("No execution details","No action results were recorded."));return;
-    }
-    if(action==="system-diagnostics"){
-      const result=await api("/system/diagnostics");
-      const rows=Object.entries(result.storage||{}).map(([name,item])=>`<div class="metric-row"><span>${escapeHTML(name)}</span><strong>${item.readable?`${item.records} records`:`Error: ${escapeHTML(item.error)}`}</strong></div>`).join("");
-      openModal("System Diagnostics",`SILO ${escapeHTML(result.version)} · ${escapeHTML(result.node)} · ${escapeHTML(result.platform)}`,`<div class="metric-row"><span>Local AI</span><strong>${result.ai?.connected?(result.ai.installed?"Connected · Model installed":"Connected · Model missing"):"Not connected"}</strong></div>${rows}<p class="form-note">Diagnostics checked ${formatDate(result.timestamp)}.</p>`);return;
-    }
-    if(action==="approve-proposal"){
-      const result=await api(`/proposals/${id}/approve`,{method:"POST",body:"{}"});
-      await refreshData();renderPage();
-      toast(`Approved. SILO executed ${result.results?.length || 1} action(s).`);return;
-    }
-    if(action==="reject-proposal"){
-      await api(`/proposals/${id}/reject`,{method:"POST",body:"{}"});
-      await refreshData();renderPage();toast("Proposal rejected.");return;
-    }
-  } catch(err){toast(err.message,"error");}
-}
-
-document.addEventListener("click",event=>{
-  const nav=event.target.closest("[data-page]");
-  if(nav){event.preventDefault();showPage(nav.dataset.page);return;}
-  const actionButton=event.target.closest("[data-action]");
-  if(actionButton){if(actionButton.dataset.action==="backdrop-close")return;handleAction(actionButton);}
+appRoot.addEventListener('click',async e=>{
+ const authSwitch=e.target.closest('[data-auth-switch]');if(authSwitch){renderAuth(authSwitch.dataset.authSwitch,state.setupRequired);return;}
+ const resend=e.target.closest('[data-resend-verification]');if(resend){const email=appRoot.querySelector('#auth-form [name=email]')?.value.trim();if(!email){toast('Enter your email address first.',true);return;}try{await request('/auth/resend-verification',{method:'POST',body:JSON.stringify({email})});toast('If the account needs verification, a new link has been sent.');}catch(err){toast(err.message,true);}return;}
+ const page=e.target.closest('[data-page]');if(page){state.page=page.dataset.page;state.search='';state.filter='all';renderPage();document.querySelectorAll('.nav-item[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page===state.page));return;}
+ const tab=e.target.closest('[data-settings-tab]');if(tab){state.settingsTab=tab.dataset.settingsTab;renderPage();return;}
+ const cancelInvite=e.target.closest('[data-cancel-invite]');if(cancelInvite){try{await request(`/workspace/invitations/${cancelInvite.dataset.cancelInvite}`,{method:'DELETE'});await loadWorkspaceTeam();toast('Invitation cancelled.');}catch(err){toast(err.message,true);}return;}
+ const removeMember=e.target.closest('[data-remove-member]');if(removeMember){if(!confirm('Remove this person from the workspace?'))return;try{await request(`/workspace/members/${removeMember.dataset.removeMember}`,{method:'DELETE',body:'{}'});await loadWorkspaceTeam();toast('Member removed.');}catch(err){toast(err.message,true);}return;}
+ const delMemory=e.target.closest('[data-delete-memory]');if(delMemory){if(!confirm('Permanently delete this business memory entry?'))return;try{await request(`/memory/${delMemory.dataset.deleteMemory}`,{method:'DELETE',body:'{}'});await refresh();renderPage();toast('Business memory deleted.');}catch(err){toast(err.message,true);}return;}
+ const delEvent=e.target.closest('[data-delete-event]');if(delEvent){if(!confirm('Delete this calendar event?'))return;try{await request(`/calendar/events/${delEvent.dataset.deleteEvent}`,{method:'DELETE'});await refresh();renderPage();toast('Event deleted.');}catch(err){toast(err.message,true);}return;}
+ const retryReminder=e.target.closest('[data-retry-reminder]');if(retryReminder){try{await request(`/calendar/events/${retryReminder.dataset.retryReminder}/retry-reminder`,{method:'POST',body:'{}'});await refresh();renderPage();toast('Reminder queued for retry.');}catch(err){toast(err.message,true);}return;}
+ const sendEmail=e.target.closest('[data-send-email]');if(sendEmail){if(!confirm('Send this email to the recipient? This action cannot be undone.'))return;try{const result=await request(`/emails/${sendEmail.dataset.sendEmail}/send`,{method:'POST',body:'{}'});await refresh();renderPage();toast(result.previewOnly?'Preview only. Configure Resend before sending customer email.':'Email sent.');}catch(err){toast(err.message,true);}return;}
+ const delDraft=e.target.closest('[data-delete-draft]');if(delDraft){if(!confirm('Delete this draft?'))return;try{await request(`/emails/${delDraft.dataset.deleteDraft}`,{method:'DELETE'});await refresh();renderPage();toast('Draft deleted.');}catch(err){toast(err.message,true);}return;}
+ const useTemplate=e.target.closest('[data-use-template]');if(useTemplate){const template=state.emailTemplates.find(t=>t.id===useTemplate.dataset.useTemplate);if(!template)return;const toEmail=prompt('Recipient email address:');if(!toEmail)return;try{await request('/emails',{method:'POST',body:JSON.stringify({toEmail,subject:template.subject,body:template.body})});state.page='emails';await refresh();renderPage();toast('Created a draft from the template.');}catch(err){toast(err.message,true);}return;}
+ const delTemplate=e.target.closest('[data-delete-template]');if(delTemplate){if(!confirm('Delete this email template?'))return;try{await request(`/email-templates/${delTemplate.dataset.deleteTemplate}`,{method:'DELETE'});await refresh();renderPage();toast('Template deleted.');}catch(err){toast(err.message,true);}return;}
+ const action=e.target.closest('[data-action]');if(action){await act(action.dataset.action,action);return;}
+ const edit=e.target.closest('[data-edit]');if(edit){const c=edit.dataset.edit;openRecordForm(c,state[c].find(x=>x.id===edit.dataset.id));return;}
+ const del=e.target.closest('[data-delete]');if(del){if(!confirm('Delete this record? This cannot be undone.'))return;try{await request(`/${del.dataset.delete}/${encodeURIComponent(del.dataset.id)}`,{method:'DELETE'});await refresh();renderPage();toast('Record deleted.');}catch(err){toast(err.message,true);}return;}
+ const toggle=e.target.closest('[data-toggle-auto]');if(toggle){const a=state.automations.find(x=>x.id===toggle.dataset.toggleAuto);try{await request(`/automations/${a.id}`,{method:'PATCH',body:JSON.stringify({enabled:a.enabled===false})});await refresh();renderPage();}catch(err){toast(err.message,true);}return;}
+ const run=e.target.closest('[data-run-auto]');if(run){try{await request(`/automations/${run.dataset.runAuto}/run`,{method:'POST',body:'{}'});await refresh();renderPage();toast('Automation executed.');}catch(err){toast(err.message,true);}return;}
+ const approve=e.target.closest('[data-approve]');if(approve){try{await request(`/proposals/${approve.dataset.approve}/approve`,{method:'POST',body:'{}'});await refresh();renderPage();toast('Proposal approved.');}catch(err){toast(err.message,true);}return;}
+ const reject=e.target.closest('[data-reject]');if(reject){try{await request(`/proposals/${reject.dataset.reject}/reject`,{method:'POST',body:'{}'});await refresh();renderPage();toast('Proposal rejected.');}catch(err){toast(err.message,true);}return;}
+ const undo=e.target.closest('[data-undo]');if(undo){if(!confirm('Undo this AI Employee proposal? SILO will only reverse it if none of the affected records have changed since approval.'))return;try{await request(`/proposals/${undo.dataset.undo}/undo`,{method:'POST',body:'{}'});await refresh();renderPage();toast('Proposal safely reversed.');}catch(err){toast(err.message,true);}return;}
+ if(e.target.matches('[data-close-modal]'))closeModal();
 });
-document.addEventListener("input",event=>{
-  if(event.target.id==="taskSearch"){state.taskSearch=event.target.value;const pos=event.target.selectionStart;renderTasks();const input=document.getElementById("taskSearch");input.focus();input.setSelectionRange(pos,pos);}
-  if(event.target.id==="customerSearch"){state.customerSearch=event.target.value;const pos=event.target.selectionStart;renderCustomers();const input=document.getElementById("customerSearch");input.focus();input.setSelectionRange(pos,pos);}
-  if(event.target.id==="documentSearch"){state.documentSearch=event.target.value;const pos=event.target.selectionStart;renderDocuments();const input=document.getElementById("documentSearch");input.focus();input.setSelectionRange(pos,pos);}
+appRoot.addEventListener('submit',async e=>{
+ e.preventDefault();const form=e.target;
+ if(form.id==='auth-form'){await authSubmit(form);return;}
+ if(form.id==='support-ticket-form'){const d=Object.fromEntries(new FormData(form).entries());try{await request('/support/tickets',{method:'POST',body:JSON.stringify(d)});form.reset();toast('Support request submitted.');}catch(err){toast(err.message,true);}return;}
+ if(form.id==='ai-budget-form'){try{await request('/ai/budget',{method:'PATCH',body:JSON.stringify({monthlyBudgetUsd:form.elements.monthlyBudgetUsd.value})});await loadAiBudget();toast('AI spending limit saved.');}catch(err){toast(err.message,true);}return;}
+ if(form.id==='notification-preferences-form'){try{await request('/account/notifications',{method:'PATCH',body:JSON.stringify({calendarReminders:form.elements.calendarReminders.checked})});toast('Notification preferences saved.');}catch(err){toast(err.message,true);}return;}
+ if(form.id==='mfa-login-form'){try{const result=await request('/auth/mfa/verify-login',{method:'POST',body:JSON.stringify({code:form.elements.code.value.trim()})});state.csrf=result.csrfToken;state.user=result.user;await acceptPendingInvite();const acct=await request('/account');state.workspaceRole=acct.workspace.role;state.activeWorkspaceId=acct.workspace.workspaceId;state.workspaces=await request('/workspaces');await refresh();state.page='dashboard';shell();toast('Welcome back.');}catch(err){toast(err.message,true);}return;}
+ if(form.id==='mfa-setup-form'){try{const result=await request('/account/mfa/setup',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(form).entries()))});const root=document.getElementById('mfa-setup-result');root.innerHTML=`<div class="action-line"><strong>Secret:</strong> <code>${esc(result.secret)}</code><br><small>Enter this key manually in your authenticator app, then enter the current six-digit code below.</small></div><form id="mfa-enable-form">${field('Authenticator code','code','','text','6-digit code')}<button class="btn primary" type="submit">Enable MFA</button></form>`;form.reset();}catch(err){toast(err.message,true);}return;}
+ if(form.id==='mfa-enable-form'){try{const result=await request('/account/mfa/enable',{method:'POST',body:JSON.stringify({code:form.elements.code.value.trim()})});const root=document.getElementById('mfa-setup-result');root.innerHTML=`<div class="action-line"><strong>Save these recovery codes now. They are shown only once.</strong><pre>${result.recoveryCodes.map(esc).join('\n')}</pre></div>`;await loadMfaStatus();toast('MFA enabled.');}catch(err){toast(err.message,true);}return;}
+ if(form.id==='mfa-disable-form'){try{await request('/account/mfa/disable',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(form).entries()))});form.reset();await loadMfaStatus();toast('MFA disabled.');}catch(err){toast(err.message,true);}return;}
+ if(form.id==='mfa-recovery-form'){try{const result=await request('/account/mfa/recovery-codes',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(form).entries()))});const root=document.getElementById('mfa-setup-result');root.innerHTML=`<div class="action-line"><strong>Save these new recovery codes now. All previous codes are invalid.</strong><pre>${result.recoveryCodes.map(esc).join('\n')}</pre></div>`;form.reset();await loadMfaStatus();}catch(err){toast(err.message,true);}return;}
+ if(form.id==='forgot-form'){try{await request('/auth/forgot-password',{method:'POST',body:JSON.stringify({email:form.elements.email.value.trim()})});toast('If that account exists, reset instructions have been sent.');renderAuth('login');}catch(err){toast(err.message,true);}return;}
+ if(form.id==='reset-form'){const token=new URLSearchParams(location.search).get('reset');try{await request('/auth/reset-password',{method:'POST',body:JSON.stringify({token,password:form.elements.password.value})});history.replaceState({},'',location.pathname);toast('Password updated. Please sign in.');renderAuth('login');}catch(err){toast(err.message,true);}return;}
+ if(form.id==='auth-resend-form'){const email=form.elements.email.value.trim();try{await request('/auth/resend-verification',{method:'POST',body:JSON.stringify({email})});toast('If the account needs verification, a new link has been sent.');}catch(err){toast(err.message,true);}return;}
+ if(form.id==='record-form'){await saveRecordForm(form);return;}
+ if(form.id==='workspace-form'){const d=Object.fromEntries(new FormData(form).entries());try{state.settings=await request('/settings',{method:'PATCH',body:JSON.stringify(d)});await refresh();renderPage();toast('Workspace saved.');}catch(err){toast(err.message,true);}return;}
+ if(form.id==='team-invite-form'){const d=Object.fromEntries(new FormData(form).entries());try{const r=await request('/workspace/invitations',{method:'POST',body:JSON.stringify(d)});form.reset();await loadWorkspaceTeam();toast(r.emailSent?'Invitation sent.':'Invitation created; check the server terminal for the development link.');}catch(err){toast(err.message,true);}return;}
+ if(form.id==='memory-form'||form.matches('.memory-edit-form')){const d=Object.fromEntries(new FormData(form).entries());const memoryId=form.dataset.memoryId;try{await request(memoryId?`/memory/${memoryId}`:'/memory',{method:memoryId?'PATCH':'POST',body:JSON.stringify(d)});await refresh();renderPage();toast(memoryId?'Business memory updated.':'Business memory saved.');}catch(err){toast(err.message,true);}return;}
+ if(form.id==='calendar-event-form'){const d=Object.fromEntries(new FormData(form).entries());try{d.startsAt=new Date(d.startsAt).toISOString();d.endsAt=d.endsAt?new Date(d.endsAt).toISOString():null;d.recurrenceUntil=d.recurrenceUntil?new Date(`${d.recurrenceUntil}T23:59:59`).toISOString():null;await request('/calendar/events',{method:'POST',body:JSON.stringify(d)});await refresh();renderPage();toast('Calendar event saved.');}catch(err){toast(err.message,true);}return;}
+ if(form.matches('.calendar-edit-form')){const d=Object.fromEntries(new FormData(form).entries());try{d.startsAt=new Date(d.startsAt).toISOString();d.endsAt=d.endsAt?new Date(d.endsAt).toISOString():null;d.recurrenceUntil=d.recurrenceUntil?new Date(`${d.recurrenceUntil}T23:59:59`).toISOString():null;await request(`/calendar/events/${form.dataset.eventId}`,{method:'PATCH',body:JSON.stringify(d)});await refresh();renderPage();toast('Calendar event updated.');}catch(err){toast(err.message,true);}return;}
+ if(form.id==='template-form'||form.matches('.template-edit-form')){const d=Object.fromEntries(new FormData(form).entries());const templateId=form.dataset.templateId;try{await request(templateId?`/email-templates/${templateId}`:'/email-templates',{method:templateId?'PATCH':'POST',body:JSON.stringify(d)});await refresh();renderPage();toast('Email template saved.');}catch(err){toast(err.message,true);}return;}
+ if(form.id==='email-draft-form'){const d=Object.fromEntries(new FormData(form).entries());try{await request('/emails',{method:'POST',body:JSON.stringify(d)});form.reset();await refresh();renderPage();toast('Email draft saved.');}catch(err){toast(err.message,true);}return;}
+ if(form.matches('.email-edit-form')){const d=Object.fromEntries(new FormData(form).entries());try{await request(`/emails/${form.dataset.emailId}`,{method:'PATCH',body:JSON.stringify(d)});await refresh();renderPage();toast('Draft updated.');}catch(err){toast(err.message,true);}return;}
+ if(form.id==='transfer-ownership-form'){const d=Object.fromEntries(new FormData(form).entries());if(!confirm('Transfer ownership of this workspace? Your role will become admin.'))return;try{await request('/workspace/transfer-ownership',{method:'POST',body:JSON.stringify(d)});const acct=await request('/account');state.workspaceRole=acct.workspace.role;renderPage();toast('Workspace ownership transferred.');}catch(err){toast(err.message,true);}return;}
+ if(form.id==='delete-account-form'){const d=Object.fromEntries(new FormData(form).entries());if(!confirm('Permanently delete your SILO account? This cannot be undone.'))return;try{await request('/account',{method:'DELETE',body:JSON.stringify(d)});location.reload();}catch(err){toast(err.message,true);}return;}
+ if(form.id==='account-form'){const d=Object.fromEntries(new FormData(form).entries());try{await request('/account',{method:'PATCH',body:JSON.stringify(d)});state.user.displayName=d.displayName;toast('Account updated.');renderPage();}catch(err){toast(err.message,true);}return;}
+ if(form.id==='email-change-form'){const d=Object.fromEntries(new FormData(form).entries());try{const r=await request('/account/change-email',{method:'POST',body:JSON.stringify(d)});toast(r.message||'Check your new email to confirm the change.');form.reset();}catch(err){toast(err.message,true);}return;}
+ if(form.id==='chat-form'){const input=form.elements.message;const message=input.value.trim();if(!message||state.aiThinking)return;state.chat.push({role:'user',content:message});input.value='';state.aiThinking=true;renderPage();document.getElementById('chat-messages')?.scrollTo(0,999999);try{const result=await request('/assistant',{method:'POST',body:JSON.stringify({message,history:state.chat.slice(-9,-1)})});state.chat.push({role:'assistant',content:result.reply||'I could not generate a response.'});}catch(err){state.chat.push({role:'assistant',content:err.message});}finally{state.aiThinking=false;}renderPage();document.getElementById('chat-messages')?.scrollTo(0,999999);return;}
+ if(form.id==='employee-form'){const goal=form.elements.goal.value.trim();if(!goal)return;const submit=form.querySelector('button[type=submit]');submit.disabled=true;submit.textContent='Preparing…';try{await request('/employee/plan',{method:'POST',body:JSON.stringify({goal,role:form.elements.role.value})});await refresh();renderPage();toast('Proposal ready for your review.');}catch(err){toast(err.message,true);submit.disabled=false;submit.textContent='Generate proposal';}return;}
 });
-document.addEventListener("change",event=>{
-  if(event.target.id==="taskSort"){state.taskSort=event.target.value;renderTasks();}
-  if(event.target.id==="settingNotifications"||event.target.id==="settingCompact"){
-    const payload=event.target.id==="settingNotifications"?{notifications:event.target.checked}:{compactMode:event.target.checked};
-    api("/settings",{method:"PATCH",body:JSON.stringify(payload)}).then(async()=>{await refreshData();toast("Preference saved.");}).catch(err=>toast(err.message,"error"));
-  }
-});
-document.addEventListener("submit",async event=>{
-  if(event.target.id==="chatForm"){event.preventDefault();const input=document.getElementById("chatInput");const message=input.value.trim();if(message)sendChat(message);}
-  if(event.target.id==="employeePlanForm"){
-    event.preventDefault();const button=event.submitter;const message=document.getElementById("employeeRequest").value.trim();if(!message)return;setBusy(button,true,"Planning...");
-    try{
-      const result=await api("/employee/plan",{method:"POST",body:JSON.stringify({message})});
-      if(!result.created){toast(result.summary||"SILO needs more information before it can prepare this plan.","error");setBusy(button,false);return;}
-      await refreshData();renderEmployee();toast(`SILO prepared a plan with ${result.proposal.actions.length} action(s). Review it below.`);
-    }catch(err){toast(err.message,"error");setBusy(button,false);}
-  }
-  if(event.target.id==="proposalForm"){
-    event.preventDefault();const button=event.submitter;setBusy(button,true);
-    try{await api("/proposals",{method:"POST",body:JSON.stringify({title:document.getElementById("proposalTitle").value,description:document.getElementById("proposalDescription").value,priority:document.getElementById("proposalPriority").value})});
-      await refreshData();renderEmployee();toast("Proposal submitted for your approval.");
-    }catch(err){toast(err.message,"error");setBusy(button,false);}
-  }
-  if(event.target.id==="settingsForm"){
-    event.preventDefault();const button=event.submitter;setBusy(button,true);
-    try{await api("/settings",{method:"PATCH",body:JSON.stringify({workspaceName:document.getElementById("settingWorkspace").value.trim(),ownerName:document.getElementById("settingOwner").value,industry:document.getElementById("settingIndustry").value,timezone:document.getElementById("settingTimezone").value,description:document.getElementById("settingDescription").value})});
-      await refreshData();renderSettings();toast("Workspace settings saved.");
-    }catch(err){toast(err.message,"error");setBusy(button,false);}
-  }
-});
-document.addEventListener("change",async event=>{
-  if(event.target.id!=="restoreBackupFile")return;
-  const file=event.target.files?.[0];
-  if(!file)return;
-  try{
-    const backup=JSON.parse(await file.text());
-    if(!confirm("Restoring this backup will replace the current SILO workspace data. Export a backup of the current workspace first if you may need it. Continue?"))return;
-    const result=await api("/backup/restore",{method:"POST",body:JSON.stringify({backup})});
-    await refreshData();renderSettings();
-    toast(`Backup restored. ${Object.values(result.counts).reduce((sum,n)=>sum+n,0)} records loaded.`);
-  }catch(error){toast(`Backup restore failed: ${error.message}`,"error");}
-  finally{event.target.value="";}
-});
-
-document.getElementById("mobileMenu").addEventListener("click",()=>sidebar.classList.toggle("open"));
-document.getElementById("notificationButton").addEventListener("click",()=>{
-  const recent=state.activity.slice(0,12);
-  openModal("Workspace Activity","Recent events recorded by SILO.",`<div class="notification-list">${recent.length?recent.map(a=>`<div class="activity-item"><span class="activity-dot"></span><div><strong>${escapeHTML(a.description)}</strong><small>${formatDate(a.createdAt)} · ${timeAgo(a.createdAt)}</small></div></div>`).join(""):emptyState("No activity yet","Workspace events will appear here.")}</div>`);
-});
-
-async function initialize() {
-  document.getElementById("todayLabel").textContent = new Date().toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"});
-  try {
-    const health=await api("/health");
-    document.getElementById("systemStatus").textContent=`SYSTEM ${health.status.toUpperCase()}`;
-    await refreshData();
-    renderDashboard();
-    console.log("SILO 1.2 initialized.");
-  } catch(error) {
-    document.getElementById("systemStatus").textContent="SERVER CONNECTION ERROR";
-    root.innerHTML=`<div class="page-content">${pageHeading("dashboard")}<div class="panel">${emptyState("SILO could not connect to its server",`${error.message} Make sure the server is running with npm start, then refresh this page.`)}<button class="btn btn-primary section-gap" id="retryConnection">Retry Connection</button></div></div>`;
-    document.getElementById("retryConnection").addEventListener("click",initialize);
-  }
-}
-initialize();
+appRoot.addEventListener('input',e=>{if(e.target.id==='list-search'){state.search=e.target.value;const pos=e.target.selectionStart;renderPage();const next=document.getElementById('list-search');if(next){next.focus();next.setSelectionRange(pos,pos);}}});
+appRoot.addEventListener('change',async e=>{if(e.target.id==='list-filter'){state.filter=e.target.value;renderPage();}if(e.target.id==='list-sort'){state.sort=e.target.value;renderPage();}if(e.target.matches('.support-status')){try{await request(`/support/tickets/${e.target.dataset.supportId}`,{method:'PATCH',body:JSON.stringify({status:e.target.value})});toast('Support request updated.');}catch(err){toast(err.message,true);}}if(e.target.matches('[data-member-role]')){try{await request(`/workspace/members/${e.target.dataset.memberRole}`,{method:'PATCH',body:JSON.stringify({role:e.target.value})});await loadWorkspaceTeam();toast('Member role updated.');}catch(err){toast(err.message,true);}}if(e.target.id==='workspace-switcher'){try{await request(`/workspaces/${e.target.value}/switch`,{method:'POST',body:'{}'});const account=await request('/account');state.workspaceRole=account.workspace.role;state.activeWorkspaceId=account.workspace.workspaceId;state.workspaces=await request('/workspaces');await refresh();renderPage();toast('Workspace switched.');}catch(err){toast(err.message,true);}}});
+loadInitial();

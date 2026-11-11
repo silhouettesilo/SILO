@@ -1,0 +1,18 @@
+'use strict';
+const assert = require('node:assert/strict');
+const { shouldApplySubscriptionEvent, matchingPlan } = require('../server/stripe-guard');
+const event = (type,id,created,status='active') => ({type,created,data:{object:{id,status}}});
+let workspace={stripe_subscription_id:null,stripe_last_subscription_id:null,stripe_last_event_created:0};
+assert.equal(shouldApplySubscriptionEvent(workspace,event('customer.subscription.created','sub_old',100)),true,'First subscription can activate');
+workspace={stripe_subscription_id:'sub_old',stripe_last_subscription_id:'sub_old',stripe_last_event_created:100};
+assert.equal(shouldApplySubscriptionEvent(workspace,event('customer.subscription.deleted','sub_old',200,'canceled')),true,'Current subscription can cancel');
+workspace={stripe_subscription_id:null,stripe_last_subscription_id:'sub_old',stripe_last_event_created:200};
+assert.equal(shouldApplySubscriptionEvent(workspace,event('customer.subscription.updated','sub_old',150)),false,'Late update cannot resurrect a deleted subscription');
+assert.equal(shouldApplySubscriptionEvent(workspace,event('customer.subscription.created','sub_new',250)),true,'A newer replacement subscription can activate');
+workspace={stripe_subscription_id:'sub_new',stripe_last_subscription_id:'sub_new',stripe_last_event_created:250};
+assert.equal(shouldApplySubscriptionEvent(workspace,event('customer.subscription.deleted','sub_old',220,'canceled')),false,'Late old cancellation cannot downgrade a newer subscription');
+assert.equal(shouldApplySubscriptionEvent(workspace,event('customer.subscription.updated','sub_new',260)),true,'Current subscription updates remain applicable');
+assert.equal(matchingPlan(['price-starter'],'price-starter','price-pro'),'starter');
+assert.equal(matchingPlan(['price-pro'],'price-starter','price-pro'),'pro');
+assert.equal(matchingPlan(['unknown'],'price-starter','price-pro'),null,'Unknown Stripe prices do not grant a paid tier');
+console.log('Stripe subscription ordering and price-mapping checks passed.');

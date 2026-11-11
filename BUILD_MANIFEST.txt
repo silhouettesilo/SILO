@@ -1,0 +1,11 @@
+SILO 3.0 RECOVERY BUILD 3.0.0-recovery.12
+Public launch assets, pricing alignment, trial checkout source and sales documentation added in recovery.11; Business Memory and backup v4 added in recovery.12.
+
+Base: SILO 2.0 Commercial Build
+Upgrade: SILO 2.1 Email Verification Upgrade
+Recovery additions: migrations 4–13, account recovery, workspace ownership transfer,
+account deletion safeguards, CSV tools, industry starter packs, AI usage/history
+ledger, support ticket storage, Stripe webhook idempotency, MFA, team invitations, calendar, email,
+notification preferences, AI usage budget alerts, email send locking, stale Stripe event protection and related frontend workflows, v4 workspace backup/restore coverage including Business Memory, and GitHub Actions CI.
+
+See BUILD_STATUS.txt for exact implemented and outstanding scope.

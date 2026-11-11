@@ -1,33 +1,29 @@
-const BASE = process.env.SILO_URL || "http://127.0.0.1:3000";
+'use strict';
+const assert = require('node:assert/strict');
+const database = require('../server/database');
+const { db } = database;
 
-async function check(name, request, validate = () => true) {
-  try {
-    const response = await fetch(`${BASE}${request}`);
-    const data = await response.json().catch(() => null);
-    if (!response.ok || !validate(data)) {
-      console.log(`FAIL  ${name} (${response.status})`);
-      if (data) console.log(`      ${JSON.stringify(data).slice(0, 400)}`);
-      return false;
-    }
-    console.log(`PASS  ${name}`);
-    return true;
-  } catch (error) {
-    console.log(`FAIL  ${name}: ${error.message}`);
-    return false;
-  }
+assert.equal(database.status().database, 'sqlite');
+assert.ok(database.status().workspaceCount >= 0);
+assert.ok(database.status().userCount >= 0);
+assert.ok(database.status().recordCount >= 0);
+const required = ['users','workspaces','memberships','workspace_records','workspace_settings','sessions','audit_log','password_reset_tokens','email_change_tokens','ai_usage','ai_execution_history','support_tickets','stripe_events','workspace_invitations','calendar_events','email_templates','email_messages','business_memory'];
+for (const table of required) {
+  const found = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(table);
+  assert.ok(found, `Missing table ${table}`);
 }
-
-(async () => {
-  console.log(`Checking SILO at ${BASE}\n`);
-  const results = [];
-  results.push(await check("Health endpoint", "/api/health", data => data?.status === "online" && data?.version === "1.2"));
-  results.push(await check("Tasks collection", "/api/tasks", Array.isArray));
-  results.push(await check("Customers collection", "/api/customers", Array.isArray));
-  results.push(await check("Documents collection", "/api/documents", Array.isArray));
-  results.push(await check("Automations collection", "/api/automations", Array.isArray));
-  results.push(await check("AI status endpoint", "/api/ai/status", data => typeof data?.connected === "boolean"));
-  results.push(await check("System diagnostics", "/api/system/diagnostics", data => data?.version === "1.2" && data?.storage));
-  results.push(await check("Backup export", "/api/backup/export", data => data?.application === "SILO" && data?.backupVersion === 1 && data?.collections));
-  console.log(`\n${results.filter(Boolean).length}/${results.length} checks passed.`);
-  if (results.some(ok => !ok)) process.exitCode = 1;
-})();
+assert.ok(database.status().migration >= 13, 'Database migration 13 must be applied.');
+for (const column of ['stripe_last_subscription_id','stripe_last_event_created']) {
+  const found = db.prepare('PRAGMA table_info(workspaces)').all().some(c => c.name === column);
+  assert.ok(found, `Missing workspaces.${column}`);
+}
+for (const column of ['send_lock','send_started_at']) {
+  const found = db.prepare('PRAGMA table_info(email_messages)').all().some(c => c.name === column);
+  assert.ok(found, `Missing email_messages.${column}`);
+}
+for (const column of ['mfa_enabled','mfa_secret_enc','mfa_pending_secret_enc','mfa_recovery_json','mfa_last_counter','notification_preferences_json']) {
+  const found = db.prepare('PRAGMA table_info(users)').all().some(c => c.name === column);
+  assert.ok(found, `Missing users.${column}`);
+}
+console.log('SILO 3.0 recovery verification passed.');
+console.log(database.status());
